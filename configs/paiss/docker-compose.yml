@@ -15,7 +15,7 @@ services:
   # ===========================================================================
   paiss-web:
     image: ${IMAGE:-ghcr.io/duersjefen/paiss:latest}
-    container_name: paiss-web
+    container_name: ${CONTAINER_NAME:-paiss-web}
     restart: unless-stopped
     networks:
       - platform
