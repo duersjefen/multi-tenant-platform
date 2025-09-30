@@ -1,0 +1,62 @@
+version: '3.8'
+
+# =============================================================================
+# Filter-iCal Deployment Configuration
+# =============================================================================
+# This file defines how filter-ical containers are deployed
+# App code lives in: https://github.com/duersjefen/ical-viewer
+# Images are pulled from GitHub Container Registry
+# =============================================================================
+
+networks:
+  platform:
+    external: true
+    name: platform
+
+services:
+  # ===========================================================================
+  # BACKEND - FastAPI + Python
+  # ===========================================================================
+  backend:
+    container_name: filter-ical-backend
+    image: ghcr.io/duersjefen/ical-viewer-backend:${VERSION:-latest}
+    restart: unless-stopped
+    networks:
+      - platform
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - SECRET_KEY=${SECRET_KEY}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===========================================================================
+  # FRONTEND - Vue 3 SPA
+  # ===========================================================================
+  frontend:
+    container_name: filter-ical-frontend
+    image: ghcr.io/duersjefen/ical-viewer-frontend:${VERSION:-latest}
+    restart: unless-stopped
+    networks:
+      - platform
+    environment:
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-https://filter-ical.de}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

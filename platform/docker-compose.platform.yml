@@ -1,0 +1,254 @@
+version: '3.8'
+
+# =============================================================================
+# Multi-Tenant Platform Infrastructure
+# =============================================================================
+# This compose file runs SHARED services for all projects:
+# - Nginx reverse proxy (routes to all apps)
+# - Certbot (SSL certificates)
+# - Prometheus (metrics collection)
+# - Grafana (metrics visualization)
+# - Alertmanager (alert notifications)
+# - Node Exporter (server metrics)
+# - cAdvisor (container metrics)
+#
+# Each individual project has its own docker-compose.yml in /deploy/apps/
+# =============================================================================
+
+networks:
+  platform:
+    name: platform
+    driver: bridge
+
+services:
+  # ===========================================================================
+  # NGINX - Reverse Proxy for All Projects
+  # ===========================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: platform-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Main nginx config
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+
+      # Include files (reusable snippets)
+      - ./nginx/includes:/etc/nginx/includes:ro
+
+      # Per-app configurations (generated from projects.yml)
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+
+      # SSL certificates
+      - certbot-certs:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+
+      # Logs
+      - nginx-logs:/var/log/nginx
+    networks:
+      - platform
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===========================================================================
+  # CERTBOT - SSL Certificate Management
+  # ===========================================================================
+  certbot:
+    image: certbot/certbot:latest
+    container_name: platform-certbot
+    volumes:
+      - certbot-certs:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+      - ./scripts/certbot-renew.sh:/scripts/renew.sh:ro
+    networks:
+      - platform
+    # Certbot runs on-demand via cron or deployment scripts
+    # Not a long-running service
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do sleep 12h & wait $${!}; certbot renew; done"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ===========================================================================
+  # PROMETHEUS - Metrics Collection
+  # ===========================================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: platform-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "127.0.0.1:9090:9090"  # Only accessible from localhost
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - platform
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===========================================================================
+  # GRAFANA - Metrics Visualization
+  # ===========================================================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: platform-grafana
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3000"  # Only accessible from localhost
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-changeme}
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+      - GF_SERVER_ROOT_URL=https://monitoring.filter-ical.de
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    networks:
+      - platform
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===========================================================================
+  # ALERTMANAGER - Alert Routing & Notifications
+  # ===========================================================================
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: platform-alertmanager
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    ports:
+      - "127.0.0.1:9093:9093"  # Only accessible from localhost
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    networks:
+      - platform
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ===========================================================================
+  # NODE EXPORTER - Server Metrics (CPU, Memory, Disk)
+  # ===========================================================================
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: platform-node-exporter
+    restart: unless-stopped
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "127.0.0.1:9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    networks:
+      - platform
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ===========================================================================
+  # CADVISOR - Container Metrics
+  # ===========================================================================
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: platform-cadvisor
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - platform
+    privileged: true
+    devices:
+      - /dev/kmsg
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+volumes:
+  # SSL certificates
+  certbot-certs:
+    name: platform-certbot-certs
+  certbot-www:
+    name: platform-certbot-www
+
+  # Nginx logs
+  nginx-logs:
+    name: platform-nginx-logs
+
+  # Monitoring data
+  prometheus-data:
+    name: platform-prometheus-data
+  grafana-data:
+    name: platform-grafana-data
+  alertmanager-data:
+    name: platform-alertmanager-data

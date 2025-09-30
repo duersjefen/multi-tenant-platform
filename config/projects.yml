@@ -1,0 +1,151 @@
+# Multi-Tenant Platform - Project Registry
+# This file defines all projects hosted on this platform
+# Add new projects here to automatically configure deployment, nginx, monitoring, etc.
+
+version: "1.0"
+
+# Platform-wide settings
+platform:
+  domain: "56.228.25.95"  # EC2 instance
+  ssl_email: "admin@filter-ical.de"
+  monitoring_enabled: true
+  backup_retention_days: 30
+
+# Projects hosted on this platform
+projects:
+
+  # =============================================================================
+  # PROJECT: filter-ical
+  # =============================================================================
+  filter-ical:
+    # Basic information
+    name: "iCal Viewer & Filter"
+    repository: "https://github.com/duersjefen/ical-viewer"
+
+    # Docker images (built by app repo CI/CD)
+    images:
+      backend: "ghcr.io/duersjefen/ical-viewer-backend"
+      frontend: "ghcr.io/duersjefen/ical-viewer-frontend"
+
+    # Domains
+    domains:
+      production:
+        - filter-ical.de
+        - www.filter-ical.de
+      staging:
+        subdomain: staging
+        domains:
+          - staging.filter-ical.de
+
+    # Container configuration
+    containers:
+      backend:
+        name: filter-ical-backend
+        port: 3000
+        health_check:
+          path: /health
+          expected_status: 200
+          timeout: 30
+          retries: 10
+          start_period: 60
+
+      frontend:
+        name: filter-ical-frontend
+        port: 80
+        health_check:
+          path: /
+          expected_status: 200
+          timeout: 30
+          retries: 10
+          start_period: 30
+
+    # Environments
+    environments:
+      production:
+        containers:
+          - filter-ical-backend
+          - filter-ical-frontend
+        deployment_strategy: blue-green
+        auto_rollback: true
+        health_check_timeout: 120
+
+      staging:
+        containers:
+          - filter-ical-backend-staging
+          - filter-ical-frontend-staging
+        deployment_strategy: direct
+        auto_rollback: true
+        health_check_timeout: 60
+
+    # Nginx configuration
+    nginx:
+      # API routes (backend)
+      api_locations:
+        - /api
+        - /domains
+        - /filter
+        - /subscribe
+        - /ical
+
+      # Special configurations
+      rate_limit:
+        zone: api
+        rate: 10r/s
+        burst: 20
+
+      # Timeouts
+      proxy_timeout: 60s
+      proxy_connect_timeout: 60s
+
+    # Monitoring & Alerts
+    monitoring:
+      enabled: true
+      alerts:
+        - name: production_down
+          condition: "up == 0"
+          duration: 1m
+          severity: critical
+
+        - name: high_error_rate
+          condition: "rate(http_5xx[5m]) > 0.05"
+          duration: 2m
+          severity: warning
+
+        - name: slow_responses
+          condition: "p95_latency > 1s"
+          duration: 5m
+          severity: warning
+
+    # Backup configuration
+    backup:
+      enabled: true
+      pre_deployment: true
+      retention: 3  # Keep last 3 backups
+
+
+  # =============================================================================
+  # TEMPLATE: Add new projects below using this structure
+  # =============================================================================
+  # my-new-app:
+  #   name: "My New Application"
+  #   repository: "https://github.com/user/my-new-app"
+  #   domains:
+  #     production:
+  #       - my-app.com
+  #   containers:
+  #     app:
+  #       name: my-new-app
+  #       port: 8080
+  #       health_check:
+  #         path: /health
+  #         expected_status: 200
+  #   environments:
+  #     production:
+  #       containers:
+  #         - my-new-app
+  #   nginx:
+  #     api_locations: []
+  #   monitoring:
+  #     enabled: true
+  #   backup:
+  #     enabled: true

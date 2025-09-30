@@ -1,0 +1,112 @@
+# =============================================================================
+# Prometheus Configuration
+# =============================================================================
+# Scrapes metrics from all services and exports to Grafana
+# Alert rules are defined in alerts.yml
+# =============================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'multi-tenant-platform'
+    environment: 'production'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# Load alert rules
+rule_files:
+  - "/etc/prometheus/alerts.yml"
+
+# Scrape configurations
+scrape_configs:
+  # ==========================================================================
+  # PROMETHEUS SELF-MONITORING
+  # ==========================================================================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # ==========================================================================
+  # SERVER METRICS (Node Exporter)
+  # ==========================================================================
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'server'
+          instance: 'ec2-production'
+
+  # ==========================================================================
+  # CONTAINER METRICS (cAdvisor)
+  # ==========================================================================
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          service: 'containers'
+
+  # ==========================================================================
+  # NGINX METRICS
+  # ==========================================================================
+  # Note: Requires nginx-prometheus-exporter or similar
+  # - job_name: 'nginx'
+  #   static_configs:
+  #     - targets: ['nginx-exporter:9113']
+  #       labels:
+  #         service: 'nginx'
+
+  # ==========================================================================
+  # APPLICATION METRICS
+  # ==========================================================================
+  # Each application should expose /metrics endpoint
+
+  # Filter-iCal Production Backend
+  - job_name: 'filter-ical-backend'
+    static_configs:
+      - targets: ['filter-ical-backend:3000']
+        labels:
+          project: 'filter-ical'
+          environment: 'production'
+          service: 'backend'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Filter-iCal Staging Backend
+  - job_name: 'filter-ical-backend-staging'
+    static_configs:
+      - targets: ['filter-ical-backend-staging:3000']
+        labels:
+          project: 'filter-ical'
+          environment: 'staging'
+          service: 'backend'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # ==========================================================================
+  # HEALTH CHECK MONITORING
+  # ==========================================================================
+  # Blackbox exporter for HTTP endpoint monitoring
+  # - job_name: 'blackbox'
+  #   metrics_path: /probe
+  #   params:
+  #     module: [http_2xx]
+  #   static_configs:
+  #     - targets:
+  #       - https://filter-ical.de
+  #       - https://filter-ical.de/health
+  #       - https://staging.filter-ical.de
+  #   relabel_configs:
+  #     - source_labels: [__address__]
+  #       target_label: __param_target
+  #     - source_labels: [__param_target]
+  #       target_label: instance
+  #     - target_label: __address__
+  #       replacement: blackbox-exporter:9115

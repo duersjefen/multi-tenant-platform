@@ -1,0 +1,91 @@
+# =============================================================================
+# .gitignore - Python FastAPI + Vue 3 iCal Viewer
+# =============================================================================
+
+# Editor / IDE
+.vscode/
+.idea/
+*.iml
+*~
+*.swp
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+backend/venv/
+backend/env/
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Node.js / Vue.js / Vite
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files (NEVER commit secrets!)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Testing
+.nyc_output/
+coverage/
+test-results/
+frontend/playwright-report/
+playwright-report/
+.pytest_cache/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# OS generated files
+Thumbs.db
+.DS_Store
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Application data (development)
+backend/data/store.pkl
+backend/data/user-calendars.edn
+backend/data/user-filters.edn
+
+# SQLite database files (never commit these!)
+*.db-shm
+*.db-wal
+backend/data/*.db-shm
+backend/data/*.db-wal
+backend/test_calendars.db
+backend/test_*.db
+
+# Development calendar URLs (NEVER commit!)
+.dev-calendars.local
+*.dev-calendars.local
+
+# Claude Code local settings
+.claude/
+.claude/settings.local.json
+
+# Production deployment artifacts
+infrastructure/secrets/
+*.backup

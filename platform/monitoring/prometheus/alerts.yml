@@ -1,0 +1,156 @@
+# =============================================================================
+# Prometheus Alert Rules
+# =============================================================================
+# Defines alert conditions that trigger notifications via Alertmanager
+# Alerts are configured per-project in projects.yml and compiled into this file
+# =============================================================================
+
+groups:
+  # ===========================================================================
+  # PLATFORM-LEVEL ALERTS (affect all projects)
+  # ===========================================================================
+  - name: platform_alerts
+    interval: 30s
+    rules:
+      # Server is down
+      - alert: ServerDown
+        expr: up{job="node-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: infrastructure
+        annotations:
+          summary: "Server {{ $labels.instance }} is down"
+          description: "The server has been unreachable for more than 1 minute"
+
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          category: infrastructure
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is above 80% for more than 5 minutes (current: {{ $value }}%)"
+
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          category: infrastructure
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is above 85% for more than 5 minutes (current: {{ $value }}%)"
+
+      # Disk space running out
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 15
+        for: 5m
+        labels:
+          severity: warning
+          category: infrastructure
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Disk space is below 15% (current: {{ $value }}%)"
+
+      # Nginx is down
+      - alert: NginxDown
+        expr: up{job="nginx"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: infrastructure
+        annotations:
+          summary: "Nginx reverse proxy is down"
+          description: "Nginx has been unreachable for more than 1 minute - ALL PROJECTS AFFECTED"
+
+      # Too many containers restarting
+      - alert: ContainerRestartLoop
+        expr: rate(container_last_seen{name!=""}[5m]) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          category: infrastructure
+        annotations:
+          summary: "Container {{ $labels.name }} is restarting frequently"
+          description: "Container has restarted more than once in the last 5 minutes"
+
+  # ===========================================================================
+  # PROJECT: filter-ical (Production)
+  # ===========================================================================
+  - name: filter_ical_production
+    interval: 30s
+    rules:
+      # Production is down
+      - alert: FilterIcalProductionDown
+        expr: up{project="filter-ical",environment="production"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          project: filter-ical
+          environment: production
+        annotations:
+          summary: "filter-ical production is DOWN"
+          description: "The production backend has been unreachable for more than 1 minute"
+
+      # High error rate
+      - alert: FilterIcalHighErrorRate
+        expr: rate(http_requests_total{project="filter-ical",environment="production",status=~"5.."}[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          project: filter-ical
+          environment: production
+        annotations:
+          summary: "High error rate on filter-ical production"
+          description: "Error rate is above 5% for more than 2 minutes (current: {{ $value }})"
+
+      # Slow response times
+      - alert: FilterIcalSlowResponses
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{project="filter-ical",environment="production"}[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          project: filter-ical
+          environment: production
+        annotations:
+          summary: "Slow responses on filter-ical production"
+          description: "95th percentile response time is above 1s for more than 5 minutes (current: {{ $value }}s)"
+
+  # ===========================================================================
+  # PROJECT: filter-ical (Staging)
+  # ===========================================================================
+  - name: filter_ical_staging
+    interval: 30s
+    rules:
+      # Staging is down
+      - alert: FilterIcalStagingDown
+        expr: up{project="filter-ical",environment="staging"} == 0
+        for: 5m  # More lenient than production
+        labels:
+          severity: warning
+          project: filter-ical
+          environment: staging
+        annotations:
+          summary: "filter-ical staging is DOWN"
+          description: "The staging backend has been unreachable for more than 5 minutes"
+
+  # ===========================================================================
+  # TEMPLATE: Add new project alerts here
+  # ===========================================================================
+  # - name: my_new_app_production
+  #   interval: 30s
+  #   rules:
+  #     - alert: MyNewAppProductionDown
+  #       expr: up{project="my-new-app",environment="production"} == 0
+  #       for: 1m
+  #       labels:
+  #         severity: critical
+  #         project: my-new-app
+  #         environment: production
+  #       annotations:
+  #         summary: "my-new-app production is DOWN"
+  #         description: "Production backend unreachable for more than 1 minute"
