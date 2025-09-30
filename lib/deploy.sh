@@ -140,7 +140,7 @@ deploy() {
     echo "📋 STEP 3: PULL NEW DOCKER IMAGES"
     echo "======================================================================"
 
-    cd "$PLATFORM_ROOT/apps/$PROJECT_NAME"
+    cd "$PLATFORM_ROOT/configs/$PROJECT_NAME"
 
     docker-compose pull
 

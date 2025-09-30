@@ -58,8 +58,9 @@ create_backup() {
     # Backup configuration files
     echo "📝 Backing up configuration..."
     local config_backup="${backup_dir}/config_${timestamp}.tar.gz"
+    local platform_root="${PLATFORM_ROOT:-/opt/multi-tenant-platform}"
     tar czf "$config_backup" \
-        -C "/deploy/apps/${project_name}" \
+        -C "${platform_root}/configs/${project_name}" \
         . \
         2>/dev/null || true
 
