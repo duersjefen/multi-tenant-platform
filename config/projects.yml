@@ -6,8 +6,10 @@ version: "1.0"
 
 # Platform-wide settings
 platform:
-  domain: "56.228.25.95"  # EC2 instance
-  ssl_email: "admin@filter-ical.de"
+  domain: "13.62.136.72"  # EC2 instance
+  company_domain: "paiss.me"  # Company domain
+  monitoring_domain: "monitoring.paiss.me"  # Platform monitoring
+  ssl_email: "info@paiss.me"
   monitoring_enabled: true
   backup_retention_days: 30
 
@@ -121,6 +123,85 @@ projects:
       enabled: true
       pre_deployment: true
       retention: 3  # Keep last 3 backups
+
+
+  # =============================================================================
+  # PROJECT: paiss
+  # =============================================================================
+  paiss:
+    # Basic information
+    name: "PAISS - Pragmatic AI Software Solutions"
+    repository: "https://github.com/duersjefen/paiss"
+
+    # Docker images (built by app repo CI/CD)
+    images:
+      web: "ghcr.io/duersjefen/paiss"
+
+    # Domains
+    domains:
+      production:
+        - paiss.me
+        - www.paiss.me
+      staging:
+        subdomain: staging
+        domains:
+          - staging.paiss.me
+
+    # Container configuration
+    containers:
+      web:
+        name: paiss-web
+        port: 80
+        health_check:
+          path: /health
+          expected_status: 200
+          timeout: 10
+          retries: 3
+          start_period: 10
+
+    # Environments
+    environments:
+      production:
+        containers:
+          - paiss-web
+        deployment_strategy: blue-green
+        auto_rollback: true
+        health_check_timeout: 30
+
+      staging:
+        containers:
+          - paiss-web-staging
+        deployment_strategy: direct
+        auto_rollback: true
+        health_check_timeout: 30
+
+    # Nginx configuration
+    nginx:
+      api_locations: []  # Static site, no API
+      rate_limit:
+        zone: general
+        rate: 20r/s
+        burst: 50
+      proxy_timeout: 30s
+      proxy_connect_timeout: 10s
+
+    # Monitoring & Alerts
+    monitoring:
+      enabled: true
+      alerts:
+        - name: production_down
+          condition: "up == 0"
+          duration: 1m
+          severity: critical
+
+        - name: high_error_rate
+          condition: "rate(http_5xx[5m]) > 0.05"
+          duration: 2m
+          severity: warning
+
+    # Backup configuration
+    backup:
+      enabled: false  # Static site, no data to backup
 
 
   # =============================================================================

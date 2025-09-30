@@ -133,7 +133,7 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-changeme}
       - GF_INSTALL_PLUGINS=grafana-piechart-panel
-      - GF_SERVER_ROOT_URL=https://monitoring.filter-ical.de
+      - GF_SERVER_ROOT_URL=https://monitoring.paiss.me
       - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
       - GF_LOG_MODE=console file
       - GF_LOG_LEVEL=info
