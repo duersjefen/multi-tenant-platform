@@ -69,28 +69,28 @@ The platform is built on these principles:
 - **Static asset caching**
 - **Health check endpoint** (`/nginx-health`)
 
-**Config**: `/deploy/platform/nginx/`
+**Config**: `platform/nginx/`
 
 #### Prometheus
 - **Scrapes metrics** from all projects
 - **Evaluates alert rules**
 - **Stores time-series data** (30 day retention)
 
-**Config**: `/deploy/platform/monitoring/prometheus/`
+**Config**: `platform/monitoring/prometheus/`
 
 #### Grafana
 - **Visualizes metrics** from Prometheus
 - **Pre-configured dashboards** for all projects
 - **Accessible** at `monitoring.filter-ical.de`
 
-**Config**: `/deploy/platform/monitoring/grafana/`
+**Config**: `platform/monitoring/grafana/`
 
 #### Alertmanager
 - **Routes alerts** to notification channels (email, Slack, PagerDuty)
 - **Deduplicates alerts**
 - **Inhibition rules** (don't alert about apps if server is down)
 
-**Config**: `/deploy/platform/monitoring/alertmanager/`
+**Config**: `platform/monitoring/alertmanager/`
 
 #### Node Exporter & cAdvisor
 - **Server-level metrics** (CPU, memory, disk)
@@ -104,7 +104,7 @@ Each project has:
 2. **Environment files**: `.env.production`, `.env.staging`
 3. **Nginx config**: Generated from `projects.yml`
 
-**Location**: `/deploy/apps/{project-name}/`
+**Location**: `configs/{project-name}/`
 
 ## 🔄 Deployment Flow
 
@@ -251,7 +251,7 @@ deploy_using_configuration
 
 ### Script Library
 
-Located in `/deploy/lib/`:
+Located in `lib/`:
 
 - **`deploy.sh`**: Main deployment orchestration
 - **`rollback.sh`**: Rollback to previous version
@@ -371,7 +371,7 @@ Scripts return proper exit codes:
 
 1. **Copy template**:
    ```bash
-   cp -r /deploy/templates/new-app /deploy/apps/my-new-app
+   cp -r templates/new-app configs/my-new-app
    ```
 
 2. **Add to registry**:
@@ -387,7 +387,7 @@ Scripts return proper exit codes:
 
 4. **Deploy**:
    ```bash
-   ./deploy/lib/deploy.sh my-new-app production
+   ./lib/deploy.sh my-new-app production
    ```
 
 Time: **~15 minutes** from idea to production!
