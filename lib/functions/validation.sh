@@ -150,12 +150,13 @@ validate_container_health() {
 validate_nginx_config() {
     echo "🔍 Validating nginx configuration..."
 
-    if docker exec platform-nginx nginx -t 2>&1 | grep -q "syntax is ok"; then
+    # nginx -t returns 0 on success, non-zero on failure
+    # Check exit code directly instead of parsing output
+    if docker exec platform-nginx nginx -t 2>&1; then
         echo -e "${GREEN}✅ Nginx configuration is valid${NC}"
         return 0
     else
         echo -e "${RED}❌ Nginx configuration is invalid${NC}"
-        docker exec platform-nginx nginx -t
         return 1
     fi
 }
