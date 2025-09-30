@@ -155,7 +155,8 @@ deploy() {
 
     # For now, use simple direct deployment
     # In production, check projects.yml for deployment strategy
-    docker-compose up -d --no-deps --remove-orphans
+    # --force-recreate ensures existing containers are replaced, not blocked
+    docker-compose up -d --force-recreate --remove-orphans
 
     # Step 5: Health check
     echo ""
