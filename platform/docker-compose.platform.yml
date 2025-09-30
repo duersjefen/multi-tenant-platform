@@ -95,8 +95,11 @@ services:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=30d'
+      - '--storage.tsdb.retention.size=10GB'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
     ports:
       - "127.0.0.1:9090:9090"  # Only accessible from localhost
     volumes:
@@ -131,6 +134,16 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-changeme}
       - GF_INSTALL_PLUGINS=grafana-piechart-panel
       - GF_SERVER_ROOT_URL=https://monitoring.filter-ical.de
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      - GF_LOG_MODE=console file
+      - GF_LOG_LEVEL=info
+      - GF_DASHBOARDS_VERSIONS_TO_KEEP=20
+      - GF_DASHBOARDS_MIN_REFRESH_INTERVAL=5s
+      - GF_SNAPSHOTS_EXTERNAL_ENABLED=false
+      - GF_USERS_VIEWERS_CAN_EDIT=false
+      - GF_AUTH_LOGIN_MAXIMUM_INACTIVE_LIFETIME_DURATION=7d
+      - GF_AUTH_LOGIN_MAXIMUM_LIFETIME_DURATION=30d
+      - GF_DATABASE_LOG_QUERIES=false
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro

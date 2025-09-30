@@ -22,7 +22,7 @@ send_notification() {
     local full_message="[$timestamp] [$severity] $title\n$message"
 
     # Log to file
-    echo -e "$full_message" >> /var/log/deployments.log
+    echo -e "$full_message" >> /tmp/deployments.log
 
     # Send to configured notification channels
     # Example: Slack

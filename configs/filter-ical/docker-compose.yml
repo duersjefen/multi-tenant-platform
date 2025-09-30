@@ -18,14 +18,13 @@ services:
   # BACKEND - FastAPI + Python
   # ===========================================================================
   backend:
-    container_name: filter-ical-backend
+    container_name: filter-ical-backend${ENVIRONMENT:+-}${ENVIRONMENT}
     image: ghcr.io/duersjefen/filter-ical-backend:${VERSION:-latest}
     restart: unless-stopped
     networks:
       - platform
-    environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - SECRET_KEY=${SECRET_KEY}
+    env_file:
+      - .env.${ENVIRONMENT:-production}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
@@ -42,13 +41,13 @@ services:
   # FRONTEND - Vue 3 SPA
   # ===========================================================================
   frontend:
-    container_name: filter-ical-frontend
+    container_name: filter-ical-frontend${ENVIRONMENT:+-}${ENVIRONMENT}
     image: ghcr.io/duersjefen/filter-ical-frontend:${VERSION:-latest}
     restart: unless-stopped
     networks:
       - platform
-    environment:
-      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-https://filter-ical.de}
+    env_file:
+      - .env.${ENVIRONMENT:-production}
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:80/"]
       interval: 30s

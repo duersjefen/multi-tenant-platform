@@ -41,6 +41,9 @@ ENVIRONMENT="${2:-}"
 SKIP_BACKUP=false
 FORCE_DEPLOY=false
 
+# Export ENVIRONMENT so docker-compose can use it
+export ENVIRONMENT
+
 shift 2 || true
 while [[ $# -gt 0 ]]; do
     case "$1" in
