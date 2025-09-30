@@ -4,7 +4,7 @@ version: '3.8'
 # Filter-iCal Deployment Configuration
 # =============================================================================
 # This file defines how filter-ical containers are deployed
-# App code lives in: https://github.com/duersjefen/ical-viewer
+# App code lives in: https://github.com/duersjefen/filter-ical
 # Images are pulled from GitHub Container Registry
 # =============================================================================
 
@@ -19,7 +19,7 @@ services:
   # ===========================================================================
   backend:
     container_name: filter-ical-backend
-    image: ghcr.io/duersjefen/ical-viewer-backend:${VERSION:-latest}
+    image: ghcr.io/duersjefen/filter-ical-backend:${VERSION:-latest}
     restart: unless-stopped
     networks:
       - platform
@@ -43,7 +43,7 @@ services:
   # ===========================================================================
   frontend:
     container_name: filter-ical-frontend
-    image: ghcr.io/duersjefen/ical-viewer-frontend:${VERSION:-latest}
+    image: ghcr.io/duersjefen/filter-ical-frontend:${VERSION:-latest}
     restart: unless-stopped
     networks:
       - platform

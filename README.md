@@ -94,7 +94,7 @@ cp -r configs/filter-ical/* configs/my-app/
 Current applications on this platform:
 
 ### filter-ical (iCal Viewer & Filter)
-- **App Repository**: https://github.com/duersjefen/ical-viewer
+- **App Repository**: https://github.com/duersjefen/filter-ical
 - **Production**: https://filter-ical.de
 - **Staging**: https://staging.filter-ical.de
 - **Config**: `configs/filter-ical/`
@@ -168,8 +168,8 @@ echo "VERSION=v1.2.3" > configs/filter-ical/.env.production
 ./lib/deploy.sh filter-ical production
 
 # The script automatically:
-# 1. Pulls ghcr.io/duersjefen/ical-viewer-backend:v1.2.3
-# 2. Pulls ghcr.io/duersjefen/ical-viewer-frontend:v1.2.3
+# 1. Pulls ghcr.io/duersjefen/filter-ical-backend:v1.2.3
+# 2. Pulls ghcr.io/duersjefen/filter-ical-frontend:v1.2.3
 # 3. Deploys to inactive environment (blue or green)
 # 4. Validates health checks
 # 5. Switches traffic

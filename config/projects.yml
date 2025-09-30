@@ -20,12 +20,12 @@ projects:
   filter-ical:
     # Basic information
     name: "iCal Viewer & Filter"
-    repository: "https://github.com/duersjefen/ical-viewer"
+    repository: "https://github.com/duersjefen/filter-ical"
 
     # Docker images (built by app repo CI/CD)
     images:
-      backend: "ghcr.io/duersjefen/ical-viewer-backend"
-      frontend: "ghcr.io/duersjefen/ical-viewer-frontend"
+      backend: "ghcr.io/duersjefen/filter-ical-backend"
+      frontend: "ghcr.io/duersjefen/filter-ical-frontend"
 
     # Domains
     domains:
