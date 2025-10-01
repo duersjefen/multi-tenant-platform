@@ -99,8 +99,9 @@ fi
 log_success "Production nginx is running"
 
 log_info "Validating nginx configuration..."
-if ! docker exec platform-nginx nginx -t 2>&1 | grep -q "syntax is ok"; then
+if ! docker exec platform-nginx nginx -t 2>&1 | tail -1 | grep -q "successful"; then
     log_error "Current production nginx config is invalid!"
+    docker exec platform-nginx nginx -t 2>&1 | tail -5
     exit 1
 fi
 log_success "Production nginx config is valid"
