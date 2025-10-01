@@ -181,9 +181,32 @@ deploy_nginx() {
         echo ""
     fi
 
-    # Step 1: Pre-flight validation
+    # Step 1: Regenerate nginx configs from source of truth
     echo "======================================================================"
-    echo "📋 STEP 1: PRE-FLIGHT VALIDATION"
+    echo "📋 STEP 1: REGENERATE NGINX CONFIGS"
+    echo "======================================================================"
+
+    if [ "$DRY_RUN" = false ]; then
+        echo "🔧 Regenerating nginx configs from projects.yml..."
+        cd "$PLATFORM_ROOT"
+
+        if python3 lib/generate-nginx-configs.py; then
+            echo -e "${GREEN}✅ Nginx configs regenerated successfully${NC}"
+        else
+            echo -e "${RED}❌ Config generation failed${NC}"
+            if [ "$FORCE_DEPLOY" = false ]; then
+                exit 1
+            fi
+            echo -e "${YELLOW}⚠️  Continuing despite failure due to --force${NC}"
+        fi
+    else
+        echo "[DRY RUN] Would regenerate nginx configs from projects.yml"
+    fi
+
+    # Step 2: Pre-flight validation
+    echo ""
+    echo "======================================================================"
+    echo "📋 STEP 2: PRE-FLIGHT VALIDATION"
     echo "======================================================================"
 
     # Validate nginx config syntax
@@ -207,7 +230,7 @@ deploy_nginx() {
         echo -e "${YELLOW}⚠️  Low disk space but continuing due to --force${NC}"
     fi
 
-    # Step 2: Backup current nginx
+    # Step 3: Backup current nginx
     if [ "$SKIP_BACKUP" = false ]; then
         echo ""
         echo "======================================================================"
@@ -242,10 +265,10 @@ deploy_nginx() {
         echo "[DRY RUN] Would pull: macbre/nginx-http3:latest"
     fi
 
-    # Step 4: Deploy new nginx
+    # Step 5: Deploy new nginx
     echo ""
     echo "======================================================================"
-    echo "📋 STEP 4: DEPLOY NEW NGINX"
+    echo "📋 STEP 5: DEPLOY NEW NGINX"
     echo "======================================================================"
 
     if [ "$DRY_RUN" = false ]; then
@@ -258,10 +281,10 @@ deploy_nginx() {
         echo "[DRY RUN] Would deploy new nginx container"
     fi
 
-    # Step 5: Validate nginx health
+    # Step 6: Validate nginx health
     echo ""
     echo "======================================================================"
-    echo "📋 STEP 5: HEALTH CHECK"
+    echo "📋 STEP 6: HEALTH CHECK"
     echo "======================================================================"
 
     if [ "$DRY_RUN" = false ]; then
@@ -280,10 +303,10 @@ deploy_nginx() {
         echo "[DRY RUN] Would validate nginx health"
     fi
 
-    # Step 6: Test all projects
+    # Step 7: Test all projects
     echo ""
     echo "======================================================================"
-    echo "📋 STEP 6: VALIDATE ALL PROJECTS"
+    echo "📋 STEP 7: VALIDATE ALL PROJECTS"
     echo "======================================================================"
 
     if [ "$DRY_RUN" = false ]; then
@@ -302,10 +325,10 @@ deploy_nginx() {
         echo "[DRY RUN] Would validate all projects"
     fi
 
-    # Step 7: Cleanup old images
+    # Step 8: Cleanup old images
     echo ""
     echo "======================================================================"
-    echo "📋 STEP 7: CLEANUP"
+    echo "📋 STEP 8: CLEANUP"
     echo "======================================================================"
 
     if [ "$DRY_RUN" = false ]; then

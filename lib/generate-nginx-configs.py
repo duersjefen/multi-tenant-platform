@@ -250,6 +250,61 @@ server {{
 
         return config
 
+    def validate_generated_configs(self) -> bool:
+        """Validate that only one reuseport exists across all configs"""
+        print()
+        print(f"{BLUE}🔍 VALIDATING GENERATED CONFIGS{NC}")
+        print("-" * 80)
+
+        reuseport_count = 0
+        reuseport_locations = []
+
+        for conf_file in sorted(self.output_dir.glob("*.conf")):
+            with open(conf_file) as f:
+                lines = f.readlines()
+                for line_num, line in enumerate(lines, 1):
+                    if "listen 443 quic reuseport" in line:
+                        reuseport_count += 1
+                        reuseport_locations.append(f"{conf_file.name}:{line_num}")
+
+        # Validation checks
+        all_passed = True
+
+        # Check 1: Exactly one reuseport
+        if reuseport_count == 1:
+            print(f"{GREEN}✅ reuseport check: Found exactly 1 occurrence{NC}")
+            print(f"   Location: {reuseport_locations[0]}")
+        else:
+            print(f"{YELLOW}❌ reuseport check: Found {reuseport_count} occurrences (expected 1){NC}")
+            for loc in reuseport_locations:
+                print(f"   - {loc}")
+            all_passed = False
+
+        # Check 2: All configs have HTTP/3 support
+        configs_without_http3 = []
+        for conf_file in sorted(self.output_dir.glob("*.conf")):
+            with open(conf_file) as f:
+                content = f.read()
+                if "listen 443 quic" not in content:
+                    configs_without_http3.append(conf_file.name)
+
+        if not configs_without_http3:
+            print(f"{GREEN}✅ HTTP/3 check: All configs have QUIC listeners{NC}")
+        else:
+            print(f"{YELLOW}❌ HTTP/3 check: Missing QUIC listeners in:{NC}")
+            for conf in configs_without_http3:
+                print(f"   - {conf}")
+            all_passed = False
+
+        print("-" * 80)
+
+        if all_passed:
+            print(f"{GREEN}✅ All validations passed{NC}")
+        else:
+            print(f"{YELLOW}⚠️  Some validations failed{NC}")
+
+        return all_passed
+
     def generate_all(self, dry_run: bool = False, specific_project: str = None):
         """Generate nginx configs for all projects"""
         data = self.load_projects()
@@ -307,11 +362,19 @@ server {{
         print("=" * 80)
 
         if not dry_run:
+            # Run validation
+            validation_passed = self.validate_generated_configs()
+
             print()
             print("Next steps:")
             print("1. Review generated configs")
             print("2. Test: docker exec platform-nginx nginx -t")
             print("3. Deploy: ./lib/deploy-platform.sh nginx")
+
+            if not validation_passed:
+                print()
+                print(f"{YELLOW}⚠️  Warning: Some validations failed. Review configs before deploying.{NC}")
+                sys.exit(1)
 
 def main():
     import argparse

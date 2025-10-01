@@ -357,12 +357,35 @@ docker compose up -d
 
 ### Adding New Projects
 
-1. **Create project config directory:**
+**✨ IMPORTANT: Nginx configs are AUTO-GENERATED from `config/projects.yml`**
+
+Never edit nginx configs manually! Instead:
+
+1. **Add project to `config/projects.yml`:**
+   ```yaml
+   projects:
+     new-project:
+       name: "New Project"
+       domains:
+         production: ["new-project.com", "www.new-project.com"]
+         staging:
+           domains: ["staging.new-project.com"]
+       containers:
+         web:
+           name: "new-project-web"
+           port: 3000
+       nginx:
+         rate_limit:
+           zone: "general"
+           burst: 50
+   ```
+
+2. **Create project config directory:**
    ```bash
    mkdir -p configs/new-project
    ```
 
-2. **Create `docker-compose.yml`:**
+3. **Create `docker-compose.yml`:**
    ```yaml
    version: '3.8'
    networks:
@@ -378,34 +401,32 @@ docker compose up -d
          - platform
    ```
 
-3. **Create nginx routing** in `platform/nginx/conf.d/new-project.conf`:
-   ```nginx
-   server {
-       listen 443 ssl;
-       listen 443 quic;  # HTTP/3 support (reuseport only on first server block)
-       http2 on;
-       server_name new-project.com;
+4. **Regenerate nginx configs:**
+   ```bash
+   # Generate configs from projects.yml
+   ./lib/generate-nginx-configs.py
 
-       ssl_certificate /etc/letsencrypt/live/new-project.com/fullchain.pem;
-       ssl_certificate_key /etc/letsencrypt/live/new-project.com/privkey.pem;
-
-       include /etc/nginx/includes/security-headers.conf;
-
-       location / {
-           set $web_host "new-project-web";
-           set $web_port "80";
-           proxy_pass http://$web_host:$web_port;
-           include /etc/nginx/includes/proxy-headers.conf;
-       }
-   }
+   # This automatically:
+   # - Creates platform/nginx/conf.d/new-project.com.conf
+   # - Sets reuseport correctly (only on first server block)
+   # - Adds HTTP/3 support
+   # - Validates configuration
    ```
 
-   **Note**: Use `./lib/generate-nginx-configs.py` to auto-generate configs from `config/projects.yml` instead of manual editing.
-
-4. **Reload nginx:**
+5. **Deploy:**
    ```bash
+   # On server - deployment script auto-regenerates configs
+   ./lib/deploy-platform.sh nginx
+
+   # Or manually
    docker compose -f platform/docker-compose.platform.yml exec nginx nginx -s reload
    ```
+
+**Why auto-generation?**
+- ✅ Prevents duplicate `reuseport` errors
+- ✅ Ensures consistent configuration
+- ✅ Validated before deployment
+- ✅ Version controlled in `projects.yml`
 
 ### SSL Certificate Management
 
@@ -504,18 +525,69 @@ curl --http3 -I https://filter-ical.de
 ## 📋 PLATFORM RULES
 
 **✅ ALWAYS:**
-- Add HTTP/3 listener (`listen 443 quic;`) to new HTTPS server blocks (⚠️ only the FIRST server block should have `reuseport`)
-- Use `./lib/generate-nginx-configs.py` to auto-generate nginx configs (prevents duplicate reuseport errors)
+- **Edit `config/projects.yml` as source of truth** for all project configurations
+- **Use `./lib/generate-nginx-configs.py`** to regenerate nginx configs (never edit manually)
+- **Enable git hooks**: `git config core.hooksPath .githooks` (validates before commit)
 - Use dynamic resolution for proxy_pass (`set $host "container-name"`)
 - Include security headers via `/etc/nginx/includes/security-headers.conf`
 - Test nginx config before reload: `docker exec platform-nginx nginx -t`
 - Use platform network for all project containers: `networks: [platform]`
 
 **❌ NEVER:**
+- **Manually edit nginx config files** in `platform/nginx/conf.d/` (use generator script)
+- **Add `reuseport` to multiple server blocks** (only first block should have it)
 - Hardcode proxy_pass URLs (prevents dynamic DNS resolution)
 - Skip HTTP/3 listeners for new projects (inconsistent protocol support)
 - Expose monitoring ports publicly (Prometheus/Grafana use localhost only)
 - Modify SSL config per-project (keep global for consistency)
+
+## 🔒 CONFIGURATION SAFETY
+
+### Multi-Layer Validation
+
+**Layer 1: Generation Script** (`lib/generate-nginx-configs.py`)
+- Automatically ensures only ONE `reuseport` across all configs
+- Validates all configs have HTTP/3 support
+- Checks `projects.yml` syntax
+- Fails deployment if validation fails
+
+**Layer 2: Pre-commit Hook** (`.githooks/pre-commit`)
+- Runs before every commit
+- Validates reuseport count
+- Checks HTTP/3 support
+- Warns if configs were hand-edited
+- Install: `git config core.hooksPath .githooks`
+
+**Layer 3: CI/CD** (`.github/workflows/validate-nginx.yml`)
+- Runs on every push/PR
+- Regenerates configs and compares with committed files
+- Tests nginx config syntax with actual nginx binary
+- Prevents merging broken configurations
+
+**Layer 4: Deployment Script** (`lib/deploy-platform.sh`)
+- Auto-regenerates configs before deploying
+- Validates nginx config syntax
+- Creates backup before changes
+- Automatic rollback on failure
+
+### Configuration Workflow
+
+```mermaid
+graph TD
+    A[Edit config/projects.yml] --> B[Run generate-nginx-configs.py]
+    B --> C[Pre-commit hook validates]
+    C --> D[Commit & push]
+    D --> E[GitHub Actions validates]
+    E --> F[Merge to main]
+    F --> G[Deploy: auto-regenerates configs]
+    G --> H[Production]
+
+    C -.->|Validation fails| A
+    E -.->|Validation fails| A
+    G -.->|Validation fails| I[Automatic rollback]
+```
+
+**Key Principle**: `config/projects.yml` is the single source of truth. Nginx configs are **generated artifacts**, not source files.
 
 ---
 

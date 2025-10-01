@@ -1,0 +1,120 @@
+#!/bin/bash
+# =============================================================================
+# Pre-Commit Hook - Nginx Config Validation
+# =============================================================================
+# Validates nginx configurations before allowing commits
+#
+# Installation:
+#   git config core.hooksPath .githooks
+#
+# Or manually:
+#   ln -s ../../.githooks/pre-commit .git/hooks/pre-commit
+#   chmod +x .githooks/pre-commit
+# =============================================================================
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+echo -e "${BLUE}🔍 Running pre-commit validation...${NC}"
+echo ""
+
+# =============================================================================
+# Check 1: Validate reuseport count
+# =============================================================================
+echo "📋 Checking reuseport configuration..."
+
+reuseport_count=$(grep -r "listen 443 quic reuseport" platform/nginx/conf.d/ 2>/dev/null | wc -l || echo "0")
+
+if [ "$reuseport_count" -eq 1 ]; then
+    echo -e "${GREEN}✅ reuseport check passed (found exactly 1)${NC}"
+elif [ "$reuseport_count" -eq 0 ]; then
+    echo -e "${YELLOW}⚠️  Warning: No reuseport found in nginx configs${NC}"
+    echo "   HTTP/3 may not work correctly without reuseport on first server block"
+else
+    echo -e "${RED}❌ reuseport check FAILED${NC}"
+    echo "   Found $reuseport_count occurrences (expected exactly 1)"
+    echo ""
+    echo "   Locations:"
+    grep -rn "listen 443 quic reuseport" platform/nginx/conf.d/
+    echo ""
+    echo "   nginx only allows reuseport ONCE per address:port"
+    echo "   Run: python3 lib/generate-nginx-configs.py to fix"
+    exit 1
+fi
+
+# =============================================================================
+# Check 2: Ensure all configs have HTTP/3
+# =============================================================================
+echo "📋 Checking HTTP/3 support..."
+
+missing_http3=0
+for conf in platform/nginx/conf.d/*.conf; do
+    if [ -f "$conf" ] && ! grep -q "listen 443 quic" "$conf"; then
+        if [ $missing_http3 -eq 0 ]; then
+            echo -e "${RED}❌ HTTP/3 check FAILED${NC}"
+            echo "   Missing 'listen 443 quic' in:"
+        fi
+        echo "   - $(basename "$conf")"
+        missing_http3=$((missing_http3 + 1))
+    fi
+done
+
+if [ $missing_http3 -eq 0 ]; then
+    echo -e "${GREEN}✅ HTTP/3 check passed (all configs have QUIC listeners)${NC}"
+else
+    echo ""
+    echo "   Run: python3 lib/generate-nginx-configs.py to fix"
+    exit 1
+fi
+
+# =============================================================================
+# Check 3: Validate projects.yml syntax
+# =============================================================================
+echo "📋 Checking projects.yml syntax..."
+
+if command -v python3 &> /dev/null; then
+    if python3 -c "import yaml; yaml.safe_load(open('config/projects.yml'))" 2>/dev/null; then
+        echo -e "${GREEN}✅ projects.yml syntax valid${NC}"
+    else
+        echo -e "${RED}❌ projects.yml syntax FAILED${NC}"
+        python3 -c "import yaml; yaml.safe_load(open('config/projects.yml'))"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}⚠️  python3 not available, skipping YAML validation${NC}"
+fi
+
+# =============================================================================
+# Check 4: Warn if nginx configs modified directly
+# =============================================================================
+echo "📋 Checking if configs were hand-edited..."
+
+if git diff --cached --name-only | grep -q "platform/nginx/conf.d/.*\.conf"; then
+    echo -e "${YELLOW}⚠️  Warning: Nginx config files were modified directly${NC}"
+    echo "   Modified files:"
+    git diff --cached --name-only | grep "platform/nginx/conf.d/.*\.conf" | sed 's/^/   - /'
+    echo ""
+    echo "   Recommendation: Edit config/projects.yml instead and regenerate:"
+    echo "   python3 lib/generate-nginx-configs.py"
+    echo ""
+    read -p "   Continue anyway? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+fi
+
+# =============================================================================
+# All checks passed
+# =============================================================================
+echo ""
+echo -e "${GREEN}✅ All pre-commit checks passed${NC}"
+echo ""
+
+exit 0
