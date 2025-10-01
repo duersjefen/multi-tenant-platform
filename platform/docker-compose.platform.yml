@@ -287,6 +287,27 @@ services:
         max-size: "5m"
         max-file: "2"
 
+  # ===========================================================================
+  # NGINX EXPORTER - Nginx Metrics for Prometheus
+  # ===========================================================================
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    container_name: platform-nginx-exporter
+    restart: unless-stopped
+    command:
+      - '-nginx.scrape-uri=http://nginx:80/nginx-status'
+    ports:
+      - "127.0.0.1:9113:9113"
+    networks:
+      - platform
+    depends_on:
+      - nginx
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
 # =============================================================================
 # VOLUMES
 # =============================================================================

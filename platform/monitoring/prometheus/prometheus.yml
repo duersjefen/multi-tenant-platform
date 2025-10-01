@@ -56,12 +56,12 @@ scrape_configs:
   # ==========================================================================
   # NGINX METRICS
   # ==========================================================================
-  # Note: Requires nginx-prometheus-exporter or similar
-  # - job_name: 'nginx'
-  #   static_configs:
-  #     - targets: ['nginx-exporter:9113']
-  #       labels:
-  #         service: 'nginx'
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx-exporter:9113']
+        labels:
+          service: 'nginx'
+          component: 'reverse-proxy'
 
   # ==========================================================================
   # APPLICATION METRICS
