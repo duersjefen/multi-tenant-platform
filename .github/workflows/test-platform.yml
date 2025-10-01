@@ -26,20 +26,24 @@ jobs:
       - name: Create mock SSL certificates
         run: |
           # Create mock certificate directories for testing
-          mkdir -p /tmp/letsencrypt/live/{filter-ical.de,staging.filter-ical.de,paiss.me,staging.paiss.me,monitoring.paiss.me}
+          sudo mkdir -p /tmp/letsencrypt/live/{filter-ical.de,staging.filter-ical.de,paiss.me,staging.paiss.me,monitoring.paiss.me}
 
           # Generate self-signed certs for syntax validation
           for domain in filter-ical.de staging.filter-ical.de paiss.me staging.paiss.me monitoring.paiss.me; do
-            openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+            sudo openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
               -keyout /tmp/letsencrypt/live/$domain/privkey.pem \
               -out /tmp/letsencrypt/live/$domain/fullchain.pem \
               -subj "/CN=$domain" 2>/dev/null
           done
 
+          # Make certificates readable
+          sudo chmod -R 755 /tmp/letsencrypt
+          sudo chmod -R 644 /tmp/letsencrypt/live/*/privkey.pem
+
       - name: Test nginx config syntax
         run: |
-          # Test nginx syntax with mock SSL certificates
-          docker run --rm \
+          # Test nginx syntax with mock SSL certificates (run as root like production)
+          docker run --rm --user 0 \
             -v ${{ github.workspace }}/platform/nginx/nginx.conf:/etc/nginx/nginx.conf:ro \
             -v ${{ github.workspace }}/platform/nginx/includes:/etc/nginx/includes:ro \
             -v ${{ github.workspace }}/platform/nginx/conf.d:/etc/nginx/conf.d:ro \
