@@ -50,8 +50,7 @@ services:
       - nginx-logs:/var/log/nginx
     networks:
       - platform
-    depends_on:
-      - prometheus
+    # Note: No depends_on - nginx is independent of monitoring stack
     healthcheck:
       test: ["CMD", "nginx", "-t"]
       interval: 30s
