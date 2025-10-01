@@ -145,7 +145,10 @@ deploy() {
 
     cd "$PLATFORM_ROOT/configs/$PROJECT_NAME"
 
-    docker-compose pull
+    # Docker Compose project name (includes environment suffix)
+    COMPOSE_PROJECT="${PROJECT_NAME}-${ENVIRONMENT}"
+
+    docker-compose -p "$COMPOSE_PROJECT" pull
 
     # Step 4: Deploy (strategy depends on configuration)
     echo ""
@@ -156,16 +159,16 @@ deploy() {
     # Stop and remove existing containers if they exist
     # Docker keeps stopped containers with their names, blocking new deployments
     echo "🔍 Checking for existing containers..."
-    EXISTING_CONTAINERS=$(docker-compose ps -q 2>/dev/null || true)
+    EXISTING_CONTAINERS=$(docker-compose -p "$COMPOSE_PROJECT" ps -q 2>/dev/null || true)
     if [ -n "$EXISTING_CONTAINERS" ]; then
         echo -e "${YELLOW}⚠️  Stopping and removing existing containers...${NC}"
-        docker-compose down --volumes
+        docker-compose -p "$COMPOSE_PROJECT" down --volumes
         echo -e "${GREEN}✅ Old containers removed${NC}"
     fi
 
     # Deploy new containers
     # --remove-orphans cleans up any containers not in current docker-compose
-    docker-compose up -d --remove-orphans
+    docker-compose -p "$COMPOSE_PROJECT" up -d --remove-orphans
 
     # Step 5: Health check
     echo ""
@@ -176,7 +179,7 @@ deploy() {
     sleep 10  # Give containers time to start
 
     # Check all containers
-    for container in $(docker-compose ps -q); do
+    for container in $(docker-compose -p "$COMPOSE_PROJECT" ps -q); do
         container_name=$(docker inspect --format='{{.Name}}' "$container" | sed 's|^/||')
 
         if ! validate_container_health "$container_name" 120 5; then
