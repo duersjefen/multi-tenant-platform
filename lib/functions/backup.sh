@@ -35,9 +35,13 @@ create_backup() {
         local image
         image=$(docker inspect --format='{{.Config.Image}}' "$container")
 
+        # Strip existing tag and add backup tag
+        local image_repo="${image%:*}"  # Remove :tag from end
+        local backup_tag="${image_repo}:${backup_name}"
+
         # Tag current image as backup
-        docker tag "$image" "${image}:${backup_name}"
-        echo "  Tagged: ${image}:${backup_name}"
+        docker tag "$image" "$backup_tag"
+        echo "  Tagged: $backup_tag"
     done
 
     # Backup volumes (if any)
