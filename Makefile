@@ -282,6 +282,18 @@ reload-nginx: ## Reload nginx config (zero downtime)
 	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) \
 		"docker exec platform-nginx nginx -t && docker exec platform-nginx nginx -s reload"
 
+.PHONY: provision-ssl
+provision-ssl: ## Auto-provision missing SSL certificates from projects.yml
+	@echo "$(YELLOW)Provisioning SSL certificates...$(NC)"
+	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) \
+		"cd $(REMOTE_PATH) && ./lib/provision-ssl-certs.sh"
+
+.PHONY: provision-ssl-dry-run
+provision-ssl-dry-run: ## Preview SSL certificates that would be provisioned
+	@echo "$(YELLOW)Checking SSL certificates (dry run)...$(NC)"
+	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) \
+		"cd $(REMOTE_PATH) && ./lib/provision-ssl-certs.sh --dry-run"
+
 # =============================================================================
 # MONITORING ACCESS
 # =============================================================================

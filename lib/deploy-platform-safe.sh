@@ -118,9 +118,23 @@ if [ "$DRY_RUN" = true ]; then
 fi
 
 # =============================================================================
-# STEP 2: DEPLOY TO STAGING (PORT 8443)
+# STEP 2: AUTO-PROVISION SSL CERTIFICATES
 # =============================================================================
-separator "🧪 STEP 2: DEPLOY TO STAGING (PORT 8443)"
+separator "🔐 STEP 2: AUTO-PROVISION SSL CERTIFICATES"
+
+log_info "Checking for missing SSL certificates..."
+if "$SCRIPT_DIR/provision-ssl-certs.sh"; then
+    log_success "SSL certificates verified/provisioned"
+else
+    log_warning "SSL provisioning had some issues (may be expected for new domains)"
+    log_info "You can manually provision later with: ./lib/provision-ssl-certs.sh"
+    log_info "Continuing with deployment..."
+fi
+
+# =============================================================================
+# STEP 3: DEPLOY TO STAGING (PORT 8443)
+# =============================================================================
+separator "🧪 STEP 3: DEPLOY TO STAGING (PORT 8443)"
 
 log_info "Starting nginx-staging container..."
 docker compose -f platform/docker-compose.platform.yml up -d nginx-staging
@@ -148,9 +162,9 @@ if [ $WAIT_TIME -ge $MAX_WAIT ]; then
 fi
 
 # =============================================================================
-# STEP 3: TEST STAGING
+# STEP 4: TEST STAGING
 # =============================================================================
-separator "✅ STEP 3: AUTOMATED TESTING ON STAGING"
+separator "✅ STEP 4: AUTOMATED TESTING ON STAGING"
 
 if [ "$SKIP_TESTS" = true ]; then
     log_warning "Skipping tests (--skip-tests flag)"
@@ -199,9 +213,9 @@ fi
 log_success "All staging tests passed!"
 
 # =============================================================================
-# STEP 4: PROMOTION DECISION
+# STEP 5: PROMOTION DECISION
 # =============================================================================
-separator "🎯 STEP 4: PROMOTE TO PRODUCTION?"
+separator "🎯 STEP 5: PROMOTE TO PRODUCTION?"
 
 echo ""
 echo "Staging tests completed successfully on port 8443"
@@ -243,9 +257,9 @@ case $CHOICE in
 esac
 
 # =============================================================================
-# STEP 5: PROMOTE TO PRODUCTION
+# STEP 6: PROMOTE TO PRODUCTION
 # =============================================================================
-separator "🚀 STEP 5: PROMOTE TO PRODUCTION (PORT 443)"
+separator "🚀 STEP 6: PROMOTE TO PRODUCTION (PORT 443)"
 
 log_info "Creating backup of production nginx..."
 BACKUP_TAG="platform-nginx-backup-$(date +%Y%m%d-%H%M%S)"
@@ -275,9 +289,9 @@ fi
 log_success "Production nginx is healthy"
 
 # =============================================================================
-# STEP 6: CLEANUP
+# STEP 7: CLEANUP
 # =============================================================================
-separator "🧹 STEP 6: CLEANUP"
+separator "🧹 STEP 7: CLEANUP"
 
 log_info "Stopping staging container..."
 docker rm -f platform-nginx-staging
@@ -286,9 +300,9 @@ log_info "Keeping backup: $BACKUP_TAG"
 log_info "To rollback: docker tag $BACKUP_TAG <restore-commands>"
 
 # =============================================================================
-# STEP 7: VALIDATION
+# STEP 8: VALIDATION
 # =============================================================================
-separator "✅ STEP 7: VALIDATION"
+separator "✅ STEP 8: VALIDATION"
 
 log_info "Testing production domains..."
 
