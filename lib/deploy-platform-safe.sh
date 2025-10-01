@@ -156,9 +156,9 @@ if [ "$SKIP_TESTS" = true ]; then
     log_warning "Skipping tests (--skip-tests flag)"
 else
     log_info "Running nginx config test..."
-    if ! docker exec platform-nginx-staging nginx -t 2>&1 | grep -q "syntax is ok"; then
+    if ! docker exec platform-nginx-staging nginx -t 2>&1 | tail -1 | grep -q "successful"; then
         log_error "Staging nginx config test failed!"
-        docker logs --tail 50 platform-nginx-staging
+        docker exec platform-nginx-staging nginx -t 2>&1 | tail -10
         docker rm -f platform-nginx-staging
         exit 1
     fi
