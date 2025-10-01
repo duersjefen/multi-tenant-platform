@@ -28,6 +28,7 @@ services:
     image: macbre/nginx-http3:latest
     container_name: platform-nginx
     restart: unless-stopped
+    user: "0"  # Run as root to access SSL certificates
     ports:
       - "80:80"
       - "443:443/tcp"
