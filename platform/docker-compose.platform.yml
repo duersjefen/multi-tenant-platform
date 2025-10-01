@@ -327,7 +327,13 @@ services:
     container_name: platform-ssl-exporter
     restart: unless-stopped
     command:
-      - --watch-dir=/etc/letsencrypt/live
+      - --watch-file=/etc/letsencrypt/live/filter-ical.de/fullchain.pem
+      - --watch-file=/etc/letsencrypt/live/paiss.me/fullchain.pem
+      - --watch-file=/etc/letsencrypt/live/gabs-massage.de/fullchain.pem
+      - --watch-file=/etc/letsencrypt/live/staging.filter-ical.de/fullchain.pem
+      - --watch-file=/etc/letsencrypt/live/staging.paiss.me/fullchain.pem
+      - --watch-file=/etc/letsencrypt/live/staging.gabs-massage.de/fullchain.pem
+      - --watch-file=/etc/letsencrypt/live/monitoring.paiss.me/fullchain.pem
       - --trim-path-components=3
       - --listen-address=:9793
     ports:
