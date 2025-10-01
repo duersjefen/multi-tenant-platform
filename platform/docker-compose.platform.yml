@@ -327,14 +327,18 @@ services:
     container_name: platform-ssl-exporter
     restart: unless-stopped
     command:
-      - --watch-dir=/etc/letsencrypt/live
-      - --watch-file=/etc/letsencrypt/live/*/fullchain.pem
-      - --watch-kubeconf=false
+      - -d
+      - /etc/letsencrypt/live
+      - -f
+      - /etc/letsencrypt/live/*/fullchain.pem
+      - -k
+      - "false"
       - --trim-path-components=3
-      - --expose-labels=dns_names
+      - -l
+      - dns_names
       - --expose-per-cert-error-metrics
-      - --listen-address=:9793
-      - --log-level=info
+      - -b
+      - :9793
     ports:
       - "127.0.0.1:9793:9793"
     volumes:
