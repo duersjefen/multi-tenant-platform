@@ -101,7 +101,7 @@ gzip_types text/plain text/css application/json application/javascript ...;
 ```nginx
 server {
     listen 443 ssl;
-    listen 443 quic reuseport;  # HTTP/3 listener
+    listen 443 quic;  # HTTP/3 listener (reuseport only on first block)
     http2 on;
     server_name example.com;
     # ...
@@ -382,7 +382,7 @@ docker compose up -d
    ```nginx
    server {
        listen 443 ssl;
-       listen 443 quic reuseport;  # HTTP/3 support
+       listen 443 quic;  # HTTP/3 support (reuseport only on first server block)
        http2 on;
        server_name new-project.com;
 
@@ -399,6 +399,8 @@ docker compose up -d
        }
    }
    ```
+
+   **Note**: Use `./lib/generate-nginx-configs.py` to auto-generate configs from `config/projects.yml` instead of manual editing.
 
 4. **Reload nginx:**
    ```bash
@@ -502,7 +504,8 @@ curl --http3 -I https://filter-ical.de
 ## 📋 PLATFORM RULES
 
 **✅ ALWAYS:**
-- Add HTTP/3 listener (`listen 443 quic reuseport;`) to new HTTPS server blocks
+- Add HTTP/3 listener (`listen 443 quic;`) to new HTTPS server blocks (⚠️ only the FIRST server block should have `reuseport`)
+- Use `./lib/generate-nginx-configs.py` to auto-generate nginx configs (prevents duplicate reuseport errors)
 - Use dynamic resolution for proxy_pass (`set $host "container-name"`)
 - Include security headers via `/etc/nginx/includes/security-headers.conf`
 - Test nginx config before reload: `docker exec platform-nginx nginx -t`

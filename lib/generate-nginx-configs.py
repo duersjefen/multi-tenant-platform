@@ -37,6 +37,7 @@ class NginxConfigGenerator:
         self.platform_root = platform_root
         self.config_file = platform_root / "config" / "projects.yml"
         self.output_dir = platform_root / "platform" / "nginx" / "conf.d"
+        self.is_first_server_block = True  # Track if this is the first HTTPS server block
 
     def load_projects(self) -> Dict[str, Any]:
         """Load and parse projects.yml"""
@@ -86,13 +87,20 @@ class NginxConfigGenerator:
         api_locations = nginx_config.get("api_locations", [])
         rate_limit = nginx_config.get("rate_limit", {})
 
+        # Determine if we should use reuseport (only for first server block)
+        quic_listener = "listen 443 quic reuseport;  # HTTP/3 support (reuseport only on first block)"
+        if not self.is_first_server_block:
+            quic_listener = "listen 443 quic;  # HTTP/3 support"
+        else:
+            self.is_first_server_block = False  # Mark that we've used reuseport
+
         # Generate configuration
         config = f"""# =============================================================================
 # {project['name']} - {environment.upper()}
 # =============================================================================
 server {{
     listen 443 ssl;
-    listen 443 quic reuseport;  # HTTP/3 support
+    {quic_listener}
     http2 on;
     server_name {server_names};
 
