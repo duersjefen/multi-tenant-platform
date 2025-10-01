@@ -32,14 +32,14 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      # Main nginx config
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # Main nginx config (absolute path - canonical location)
+      - /opt/multi-tenant-platform/platform/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
 
       # Include files (reusable snippets)
-      - ./nginx/includes:/etc/nginx/includes:ro
+      - /opt/multi-tenant-platform/platform/nginx/includes:/etc/nginx/includes:ro
 
       # Per-app configurations (generated from projects.yml)
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - /opt/multi-tenant-platform/platform/nginx/conf.d:/etc/nginx/conf.d:ro
 
       # SSL certificates
       - certbot-certs:/etc/letsencrypt:ro
@@ -72,7 +72,7 @@ services:
     volumes:
       - certbot-certs:/etc/letsencrypt
       - certbot-www:/var/www/certbot
-      - ./scripts/certbot-renew.sh:/scripts/renew.sh:ro
+      - /opt/multi-tenant-platform/platform/scripts/certbot-renew.sh:/scripts/renew.sh:ro
     networks:
       - platform
     # Certbot runs on-demand via cron or deployment scripts
@@ -103,8 +103,8 @@ services:
     ports:
       - "127.0.0.1:9090:9090"  # Only accessible from localhost
     volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - /opt/multi-tenant-platform/platform/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /opt/multi-tenant-platform/platform/monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus-data:/prometheus
     networks:
       - platform
@@ -145,8 +145,8 @@ services:
       - GF_AUTH_LOGIN_MAXIMUM_LIFETIME_DURATION=30d
       - GF_DATABASE_LOG_QUERIES=false
     volumes:
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - /opt/multi-tenant-platform/platform/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - /opt/multi-tenant-platform/platform/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     networks:
       - platform
@@ -177,7 +177,7 @@ services:
     ports:
       - "127.0.0.1:9093:9093"  # Only accessible from localhost
     volumes:
-      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - /opt/multi-tenant-platform/platform/monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager-data:/alertmanager
     networks:
       - platform
