@@ -12,6 +12,7 @@ on:
     paths:
       - 'platform/**'
       - 'lib/**'
+      - '.github/workflows/**'
 
 jobs:
   test:
