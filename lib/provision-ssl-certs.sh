@@ -70,11 +70,14 @@ separator() {
     echo "========================================================================"
 }
 
-# Check if we're on production server
-if [ ! -d "/opt/multi-tenant-platform" ]; then
-    log_error "This script must run on the production server"
-    log_info "Run this via: make provision-ssl"
-    exit 1
+# Detect if we're on production server or local
+if [ -d "/opt/multi-tenant-platform" ]; then
+    ON_SERVER=true
+    CERT_BASE_PATH="/etc/letsencrypt/live"
+else
+    ON_SERVER=false
+    CERT_BASE_PATH="$PLATFORM_ROOT/platform/certbot/conf/live"
+    log_warning "Running locally - will create placeholder certificates"
 fi
 
 cd "$PLATFORM_ROOT"
@@ -146,11 +149,17 @@ MISSING_DOMAINS=()
 EXISTING_DOMAINS=()
 
 while IFS= read -r domain; do
-    CERT_PATH="/etc/letsencrypt/live/$domain/fullchain.pem"
+    CERT_PATH="$CERT_BASE_PATH/$domain/fullchain.pem"
 
     if [ -f "$CERT_PATH" ]; then
-        EXISTING_DOMAINS+=("$domain")
-        echo "  ✓ $domain (already exists)"
+        # Check if it's a placeholder
+        if [ -f "$CERT_BASE_PATH/$domain/.placeholder" ]; then
+            echo "  ⚠ $domain (placeholder certificate)"
+            MISSING_DOMAINS+=("$domain")
+        else
+            EXISTING_DOMAINS+=("$domain")
+            echo "  ✓ $domain (real certificate)"
+        fi
     else
         MISSING_DOMAINS+=("$domain")
         echo "  ✗ $domain (missing)"
@@ -189,25 +198,57 @@ for domain in "${DOMAINS_TO_PROVISION[@]}"; do
         continue
     fi
 
-    # Run certbot for this domain
-    if docker compose -f platform/docker-compose.platform.yml run --rm certbot \
-        certonly --webroot -w /var/www/certbot \
-        -d "$domain" \
-        --email "$SSL_EMAIL" \
-        --agree-tos \
-        --no-eff-email \
-        --non-interactive; then
-        log_success "Certificate provisioned: $domain"
-    else
-        log_error "Failed to provision certificate for: $domain"
-        log_warning "This may be due to:"
-        log_warning "  - DNS not pointing to this server yet"
-        log_warning "  - Port 80 not accessible"
-        log_warning "  - Rate limiting from Let's Encrypt"
+    # Try to get real Let's Encrypt certificate
+    CERTBOT_SUCCESS=false
+    if [ "$ON_SERVER" = true ]; then
+        if docker compose -f platform/docker-compose.platform.yml run --rm certbot \
+            certonly --webroot -w /var/www/certbot \
+            -d "$domain" \
+            --email "$SSL_EMAIL" \
+            --agree-tos \
+            --no-eff-email \
+            --non-interactive 2>/dev/null; then
+            CERTBOT_SUCCESS=true
+            log_success "Real Let's Encrypt certificate obtained: $domain"
+
+            # Remove placeholder marker if it exists
+            rm -f "$CERT_BASE_PATH/$domain/.placeholder"
+        fi
+    fi
+
+    # If certbot failed or we're running locally, create placeholder certificate
+    if [ "$CERTBOT_SUCCESS" = false ]; then
+        log_warning "Let's Encrypt failed for $domain - creating placeholder certificate"
+        log_info "Reasons for failure:"
+        log_info "  - DNS not pointing to this server yet"
+        log_info "  - Port 80 not accessible"
+        log_info "  - Rate limiting from Let's Encrypt"
+        log_info "  - Running locally (not on production server)"
         echo ""
 
-        # Continue with other domains instead of failing completely
-        continue
+        # Create directory
+        CERT_DIR="$CERT_BASE_PATH/$domain"
+        mkdir -p "$CERT_DIR"
+
+        # Generate self-signed certificate
+        log_info "Generating self-signed placeholder..."
+        openssl req -x509 -nodes -newkey rsa:2048 \
+            -days 90 \
+            -keyout "$CERT_DIR/privkey.pem" \
+            -out "$CERT_DIR/fullchain.pem" \
+            -subj "/CN=$domain" \
+            2>/dev/null
+
+        # Create chain.pem (required by nginx)
+        cp "$CERT_DIR/fullchain.pem" "$CERT_DIR/chain.pem"
+
+        # Mark as placeholder
+        touch "$CERT_DIR/.placeholder"
+
+        log_success "Placeholder certificate created: $domain"
+        log_warning "→ Nginx will start, but browsers will show security warning"
+        log_info "→ Replace with real cert later: ./lib/provision-ssl-certs.sh"
+        echo ""
     fi
 done
 

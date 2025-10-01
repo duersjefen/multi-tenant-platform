@@ -203,6 +203,23 @@ deploy_nginx() {
         echo "[DRY RUN] Would regenerate nginx configs from projects.yml"
     fi
 
+    # Step 1.5: Provision SSL certificates (auto-creates placeholders if needed)
+    echo ""
+    echo "======================================================================"
+    echo "📋 STEP 1.5: PROVISION SSL CERTIFICATES"
+    echo "======================================================================"
+
+    if [ "$DRY_RUN" = false ]; then
+        echo "Checking for missing SSL certificates..."
+        if "$SCRIPT_DIR/provision-ssl-certs.sh"; then
+            echo -e "${GREEN}✅ SSL certificates provisioned${NC}"
+        else
+            echo -e "${YELLOW}⚠️  SSL provisioning had warnings (continuing)${NC}"
+        fi
+    else
+        echo "[DRY RUN] Would provision missing SSL certificates"
+    fi
+
     # Step 2: Pre-flight validation
     echo ""
     echo "======================================================================"
