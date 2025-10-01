@@ -170,6 +170,49 @@ deploy() {
     # --remove-orphans cleans up any containers not in current docker-compose
     docker-compose -p "$COMPOSE_PROJECT" up -d --remove-orphans
 
+    # Step 4.5: Run database migrations (if backend exists)
+    echo ""
+    echo "======================================================================"
+    echo "📋 STEP 4.5: DATABASE MIGRATIONS"
+    echo "======================================================================"
+
+    # Check if this project has a backend with Alembic
+    if docker-compose -p "$COMPOSE_PROJECT" ps --services 2>/dev/null | grep -q "backend"; then
+        echo "🗄️  Running database migrations..."
+
+        # Wait for backend container to be ready
+        sleep 5
+
+        # Run migrations inside the backend container
+        BACKEND_CONTAINER=$(docker-compose -p "$COMPOSE_PROJECT" ps -q backend 2>/dev/null | head -1)
+
+        if [ -n "$BACKEND_CONTAINER" ]; then
+            # Check if alembic exists in the container
+            if docker exec "$BACKEND_CONTAINER" sh -c "command -v alembic" >/dev/null 2>&1; then
+                # First-time setup: stamp database if alembic_version table doesn't exist
+                if ! docker exec "$BACKEND_CONTAINER" sh -c "cd /app/backend && python -c \"from alembic import command; from alembic.config import Config; cfg = Config('/app/backend/alembic.ini'); command.current(cfg)\"" >/dev/null 2>&1; then
+                    echo "📌 First deployment: stamping database to current version..."
+                    docker exec "$BACKEND_CONTAINER" sh -c "cd /app/backend && alembic stamp head"
+                fi
+
+                # Run migrations
+                if docker exec "$BACKEND_CONTAINER" sh -c "cd /app/backend && alembic upgrade head"; then
+                    echo -e "${GREEN}✅ Database migrations applied${NC}"
+                else
+                    echo -e "${RED}❌ Migration failed!${NC}"
+                    notify_deployment_failure "$PROJECT_NAME" "$ENVIRONMENT" "Database migration failed"
+                    exit 1
+                fi
+            else
+                echo "ℹ️  No Alembic found - skipping migrations"
+            fi
+        else
+            echo -e "${YELLOW}⚠️  Backend container not found - skipping migrations${NC}"
+        fi
+    else
+        echo "ℹ️  No backend service - skipping database migrations"
+    fi
+
     # Step 5: Health check
     echo ""
     echo "======================================================================"
