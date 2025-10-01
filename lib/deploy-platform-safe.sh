@@ -123,7 +123,7 @@ fi
 separator "🧪 STEP 2: DEPLOY TO STAGING (PORT 8443)"
 
 log_info "Starting nginx-staging container..."
-docker compose -f platform/docker-compose.platform.yml up -d --profile staging nginx-staging
+docker compose -f platform/docker-compose.platform.yml up -d nginx-staging
 
 log_info "Waiting for staging nginx to be healthy..."
 WAIT_TIME=0

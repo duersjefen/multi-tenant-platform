@@ -74,7 +74,7 @@ generate-configs: ## Generate nginx configs from projects.yml
 staging-start: ## Start staging nginx on production server (port 8443)
 	@echo "$(YELLOW)Starting remote staging nginx on port 8443...$(NC)"
 	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) \
-		"cd $(REMOTE_PATH) && docker compose -f platform/docker-compose.platform.yml up -d --profile staging nginx-staging"
+		"cd $(REMOTE_PATH) && docker compose -f platform/docker-compose.platform.yml up -d nginx-staging"
 	@echo "$(GREEN)✅ Staging running at: https://$(SSH_HOST):8443$(NC)"
 
 .PHONY: staging-stop

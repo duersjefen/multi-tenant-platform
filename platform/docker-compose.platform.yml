@@ -79,8 +79,6 @@ services:
     container_name: platform-nginx-staging
     restart: "no"  # Don't auto-restart (this is for manual testing)
     user: "0"  # Run as root to access SSL certificates
-    profiles:
-      - staging  # Only starts with: --profile staging
     ports:
       - "8443:443/tcp"  # Map container 443 to host 8443
       - "8443:443/udp"  # HTTP/3 (QUIC) on 8443
