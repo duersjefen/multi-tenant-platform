@@ -328,10 +328,8 @@ services:
     restart: unless-stopped
     command:
       - --watch-dir=/etc/letsencrypt/live
-      - --watch-kubeconf=false
       - --trim-path-components=3
       - --listen-address=:9793
-      - --log-level=info
     ports:
       - "127.0.0.1:9793:9793"
     volumes:
