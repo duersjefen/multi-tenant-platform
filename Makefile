@@ -67,12 +67,48 @@ generate-configs: ## Generate nginx configs from projects.yml
 	python3 lib/generate-nginx-configs.py
 
 # =============================================================================
+# REMOTE STAGING MANAGEMENT
+# =============================================================================
+
+.PHONY: staging-start
+staging-start: ## Start staging nginx on production server (port 8443)
+	@echo "$(YELLOW)Starting remote staging nginx on port 8443...$(NC)"
+	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) \
+		"cd $(REMOTE_PATH) && docker compose -f platform/docker-compose.platform.yml up -d --profile staging nginx-staging"
+	@echo "$(GREEN)✅ Staging running at: https://$(SSH_HOST):8443$(NC)"
+
+.PHONY: staging-stop
+staging-stop: ## Stop staging nginx on production server
+	@echo "$(YELLOW)Stopping remote staging nginx...$(NC)"
+	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) \
+		"docker rm -f platform-nginx-staging"
+
+.PHONY: staging-logs
+staging-logs: ## View staging nginx logs
+	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) "docker logs -f --tail 50 platform-nginx-staging"
+
+.PHONY: staging-test
+staging-test: ## Test staging nginx on production server
+	@echo "$(YELLOW)Testing staging nginx...$(NC)"
+	@curl -k -sI https://$(SSH_HOST):8443 | head -10 || echo "$(RED)Failed to connect$(NC)"
+
+# =============================================================================
 # PRODUCTION DEPLOYMENT
 # =============================================================================
 
 .PHONY: deploy-nginx
-deploy-nginx: ## Deploy nginx to production (platform reverse proxy)
-	@echo "$(YELLOW)Deploying platform nginx...$(NC)"
+deploy-nginx: ## Deploy nginx safely (staging-first with validation)
+	@echo "$(YELLOW)Safe deployment: staging → test → production$(NC)"
+	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) "cd $(REMOTE_PATH) && ./lib/deploy-platform-safe.sh nginx"
+
+.PHONY: deploy-nginx-force
+deploy-nginx-force: ## Deploy nginx with automatic promotion (skip manual approval)
+	@echo "$(YELLOW)Force deploying platform nginx...$(NC)"
+	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) "cd $(REMOTE_PATH) && ./lib/deploy-platform-safe.sh nginx --force"
+
+.PHONY: deploy-nginx-legacy
+deploy-nginx-legacy: ## Deploy nginx the old way (direct to production, riskier)
+	@echo "$(RED)⚠️  Legacy deployment - no staging validation!$(NC)"
 	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) "cd $(REMOTE_PATH) && ./lib/deploy-platform.sh nginx"
 
 .PHONY: deploy-monitoring

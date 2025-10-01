@@ -145,6 +145,69 @@ make rollback-nginx     # Rollback to previous nginx version
 
 ---
 
+### TRUE Staging Architecture
+
+**The platform now implements real staging isolation:**
+
+```
+┌────────────────────────────────────────┐
+│  nginx-staging (port 8443)             │ ← Test here FIRST
+│  - Same configs as production          │ - Zero production risk
+│  - Automatic health checks             │ - Safe to break
+└────────────────────────────────────────┘
+          ↓ Tests pass? Promote ↓
+┌────────────────────────────────────────┐
+│  nginx-production (port 443)           │ ← Production traffic
+│  - Only receives validated changes     │
+└────────────────────────────────────────┘
+```
+
+**How It Works:**
+
+1. **Deploy to staging first** (`make deploy-nginx`)
+   - Starts nginx-staging on port 8443
+   - Uses SAME configs as production
+   - Runs automated tests
+
+2. **Validation**
+   - Health checks
+   - Config syntax validation
+   - HTTP/3 verification
+   - Manual testing option
+
+3. **Promotion** (only if tests pass)
+   - Reload production nginx with new config
+   - Zero downtime
+   - Automatic rollback if issues detected
+
+**Key Benefits:**
+
+✅ Production never at risk during testing
+✅ Can test breaking changes safely
+✅ Automated validation before promotion
+✅ Manual approval option for critical changes
+✅ Instant rollback if issues found
+
+**Commands:**
+
+```bash
+# Safe deployment (recommended)
+make deploy-nginx          # Interactive: staging → test → approve → production
+
+# Automated deployment (CI/CD)
+make deploy-nginx-force    # Non-interactive: staging → test → auto-promote
+
+# Manual staging management
+make staging-start         # Start staging on port 8443
+make staging-test          # Test staging
+make staging-logs          # View staging logs
+make staging-stop          # Stop staging
+```
+
+**Note:** "Staging domains" (staging.filter-ical.de) are DIFFERENT - those are application environments served by the same production nginx. The staging nginx (port 8443) is for testing platform infrastructure changes.
+
+---
+
 ### Critical Distinction
 
 **APPLICATION deployments** (filter-ical, paiss):

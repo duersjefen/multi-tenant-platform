@@ -65,6 +65,52 @@ services:
         max-file: "3"
 
   # ===========================================================================
+  # NGINX STAGING - Test Platform Changes Safely
+  # ===========================================================================
+  # This container runs on port 8443 to test nginx config changes before
+  # deploying to production. It uses the SAME configs as production.
+  #
+  # Usage:
+  #   docker compose -f platform/docker-compose.platform.yml up -d nginx-staging
+  #   Test at https://SERVER_IP:8443
+  #   If good: deploy to production nginx
+  #   docker compose -f platform/docker-compose.platform.yml down nginx-staging
+  # ===========================================================================
+  nginx-staging:
+    image: macbre/nginx-http3:latest
+    container_name: platform-nginx-staging
+    restart: "no"  # Don't auto-restart (this is for manual testing)
+    user: "0"  # Run as root to access SSL certificates
+    profiles:
+      - staging  # Only starts with: --profile staging
+    ports:
+      - "8443:443/tcp"  # Map container 443 to host 8443
+      - "8443:443/udp"  # HTTP/3 (QUIC) on 8443
+    volumes:
+      # Uses SAME configs as production (tests the real thing)
+      - /opt/multi-tenant-platform/platform/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /opt/multi-tenant-platform/platform/nginx/includes:/etc/nginx/includes:ro
+      - /opt/multi-tenant-platform/platform/nginx/conf.d:/etc/nginx/conf.d:ro
+      - certbot-certs:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+
+      # Separate staging logs
+      - nginx-staging-logs:/var/log/nginx
+    networks:
+      - platform
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ===========================================================================
   # CERTBOT - SSL Certificate Management
   # ===========================================================================
   certbot:
@@ -258,6 +304,8 @@ volumes:
   # Nginx logs
   nginx-logs:
     name: platform-nginx-logs
+  nginx-staging-logs:
+    name: platform-nginx-staging-logs
 
   # Monitoring data
   prometheus-data:

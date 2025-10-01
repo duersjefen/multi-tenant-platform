@@ -1,0 +1,160 @@
+name: Deploy Platform (Staging-First)
+
+on:
+  # Manual deployment (recommended)
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'Component to deploy'
+        required: true
+        type: choice
+        options:
+          - nginx
+          - monitoring
+          - certbot
+        default: nginx
+      auto_promote:
+        description: 'Automatically promote to production'
+        required: false
+        type: boolean
+        default: false
+
+  # Automatic deployment on main branch (nginx only)
+  push:
+    branches:
+      - main
+    paths:
+      - 'platform/nginx/**'
+      - 'platform/docker-compose.platform.yml'
+
+# Only one deployment at a time
+concurrency:
+  group: deploy-platform
+  cancel-in-progress: false
+
+jobs:
+  # Run tests first
+  test:
+    name: Validate Configuration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate nginx syntax
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/platform/nginx/nginx.conf:/etc/nginx/nginx.conf:ro \
+            -v ${{ github.workspace }}/platform/nginx/includes:/etc/nginx/includes:ro \
+            -v ${{ github.workspace }}/platform/nginx/conf.d:/etc/nginx/conf.d:ro \
+            macbre/nginx-http3:latest nginx -t
+
+      - name: Validate docker-compose
+        run: |
+          docker compose -f platform/docker-compose.platform.yml config > /dev/null
+
+      - name: Check HTTP/3 configuration
+        run: |
+          if ! grep -q "listen 443 quic" platform/nginx/conf.d/*.conf; then
+            echo "❌ HTTP/3 QUIC listeners not found"
+            exit 1
+          fi
+          echo "✅ HTTP/3 configuration verified"
+
+      - name: Check Alt-Svc header
+        run: |
+          if ! grep -q "Alt-Svc" platform/nginx/includes/security-headers.conf; then
+            echo "❌ Alt-Svc header not found"
+            exit 1
+          fi
+          echo "✅ Alt-Svc header configured"
+
+  # Deploy using staging-first strategy
+  deploy:
+    name: Deploy with Staging Validation
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production  # Requires approval in GitHub settings if configured
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.PRODUCTION_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Pull latest changes on production server
+        run: |
+          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.PRODUCTION_HOST }} << 'EOF'
+            set -e
+            cd /opt/multi-tenant-platform
+            git fetch origin main
+            git reset --hard origin/main
+            echo "✅ Code updated on production server"
+          EOF
+
+      - name: Deploy using staging-first strategy
+        run: |
+          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.PRODUCTION_HOST }} << 'EOF'
+            set -e
+            cd /opt/multi-tenant-platform
+
+            # Use --force flag for automatic promotion (CI/CD)
+            if [ "${{ inputs.auto_promote }}" = "true" ] || [ "${{ github.event_name }}" = "push" ]; then
+              echo "🚀 Automatic deployment with staging validation"
+              ./lib/deploy-platform-safe.sh nginx --force
+            else
+              echo "🧪 Manual deployment - requires approval"
+              ./lib/deploy-platform-safe.sh nginx
+            fi
+          EOF
+
+      - name: Validate production domains
+        run: |
+          sleep 5
+
+          # Test key domains
+          for domain in filter-ical.de paiss.me; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://$domain")
+            if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "302" ]; then
+              echo "❌ $domain returned: $HTTP_CODE"
+              exit 1
+            fi
+            echo "✅ $domain: $HTTP_CODE"
+          done
+
+      - name: Validate HTTP/3
+        run: |
+          if ! curl -sI https://filter-ical.de | grep -i "alt-svc.*h3"; then
+            echo "❌ HTTP/3 Alt-Svc header not found"
+            exit 1
+          fi
+          echo "✅ HTTP/3 Alt-Svc header present"
+
+  # Notify on completion
+  notify:
+    name: Deployment Summary
+    needs: [test, deploy]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Report success
+        if: ${{ needs.deploy.result == 'success' }}
+        run: |
+          echo "## ✅ Deployment Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Strategy:** Staging-first with validation" >> $GITHUB_STEP_SUMMARY
+          echo "**Component:** nginx" >> $GITHUB_STEP_SUMMARY
+          echo "**Validated:** Production domains responding" >> $GITHUB_STEP_SUMMARY
+          echo "**HTTP/3:** Enabled and verified" >> $GITHUB_STEP_SUMMARY
+
+      - name: Report failure
+        if: ${{ needs.deploy.result == 'failure' || needs.test.result == 'failure' }}
+        run: |
+          echo "## ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Check logs for details. Production should be unaffected." >> $GITHUB_STEP_SUMMARY
+          exit 1
