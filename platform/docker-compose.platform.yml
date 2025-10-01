@@ -327,8 +327,6 @@ services:
     container_name: platform-ssl-exporter
     restart: unless-stopped
     command:
-      - -d
-      - /etc/letsencrypt/live
       - -f
       - /etc/letsencrypt/live/*/fullchain.pem
       - -k
