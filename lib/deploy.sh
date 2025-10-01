@@ -153,13 +153,14 @@ deploy() {
     echo "📋 STEP 4: DEPLOY NEW VERSION"
     echo "======================================================================"
 
-    # Stop existing containers if they exist (but don't remove - keep for rollback)
-    # This allows new containers to use the same names
+    # Stop and remove existing containers if they exist
+    # Docker keeps stopped containers with their names, blocking new deployments
     echo "🔍 Checking for existing containers..."
     EXISTING_CONTAINERS=$(docker-compose ps -q 2>/dev/null || true)
     if [ -n "$EXISTING_CONTAINERS" ]; then
-        echo -e "${YELLOW}⚠️  Stopping existing containers (keeping for potential rollback)...${NC}"
-        docker-compose stop
+        echo -e "${YELLOW}⚠️  Stopping and removing existing containers...${NC}"
+        docker-compose down --volumes
+        echo -e "${GREEN}✅ Old containers removed${NC}"
     fi
 
     # Deploy new containers
@@ -205,22 +206,14 @@ deploy() {
         exit 1
     fi
 
-    # Step 7: Cleanup old containers (AFTER successful deployment)
+    # Step 7: Cleanup dangling resources (AFTER successful deployment)
     echo ""
     echo "======================================================================"
-    echo "📋 STEP 7: CLEANUP OLD CONTAINERS"
+    echo "📋 STEP 7: CLEANUP DANGLING RESOURCES"
     echo "======================================================================"
 
-    if [ -n "$EXISTING_CONTAINERS" ]; then
-        echo "🗑️  Removing old stopped containers..."
-        docker-compose rm -f -v
-        echo -e "${GREEN}✅ Old containers cleaned up${NC}"
-    else
-        echo "ℹ️  No old containers to clean up"
-    fi
-
-    # Cleanup dangling images and volumes
-    echo "🧹 Cleaning up dangling resources..."
+    # Cleanup dangling images (old containers already removed in Step 4)
+    echo "🧹 Cleaning up dangling Docker images..."
     docker image prune -f > /dev/null 2>&1 || true
     echo -e "${GREEN}✅ Cleanup complete${NC}"
 
