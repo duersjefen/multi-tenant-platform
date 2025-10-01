@@ -112,6 +112,39 @@ server {
 
 ## 🚀 PLATFORM DEPLOYMENT
 
+### Quick Start: Using the Makefile
+
+For the fastest workflow, use the Makefile from your local machine:
+
+```bash
+# See all available commands
+make help
+
+# Common operations
+make test               # Test platform configs locally
+make deploy-quick       # Pull changes + reload nginx (zero downtime)
+make deploy-nginx       # Full nginx deployment with backups
+make validate           # Validate all hosted projects
+make status             # Check platform container status
+make logs-nginx         # Tail nginx logs
+
+# Monitoring
+make grafana            # Open Grafana dashboard
+make health             # Check all platform service health
+
+# Emergency
+make rollback-nginx     # Rollback to previous nginx version
+```
+
+**Why this is better than manual SSH:**
+- Single command from local terminal
+- Self-documenting (`make help`)
+- Handles SSH connection automatically
+- Wraps complex operations safely
+- Works offline (just references remote scripts)
+
+---
+
 ### Critical Distinction
 
 **APPLICATION deployments** (filter-ical, paiss):

@@ -1,0 +1,160 @@
+name: Deploy to Staging
+
+on:
+  # Automatic deployment after tests pass
+  push:
+    branches:
+      - main
+    paths:
+      - 'platform/nginx/**'
+      - 'platform/docker-compose.platform.yml'
+      - 'platform/monitoring/**'
+
+  # Manual deployment option
+  workflow_dispatch:
+    inputs:
+      skip_validation:
+        description: 'Skip staging validation'
+        required: false
+        type: boolean
+        default: false
+
+# Only one staging deployment at a time
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  # Run tests first
+  test:
+    name: Run Platform Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate nginx syntax
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/platform/nginx/nginx.conf:/etc/nginx/nginx.conf:ro \
+            -v ${{ github.workspace }}/platform/nginx/includes:/etc/nginx/includes:ro \
+            -v ${{ github.workspace }}/platform/nginx/conf.d:/etc/nginx/conf.d:ro \
+            nginx:alpine nginx -t
+
+      - name: Validate docker-compose
+        run: |
+          docker compose -f platform/docker-compose.platform.yml config > /dev/null
+
+      - name: Check HTTP/3 configuration
+        run: |
+          if ! grep -q "listen 443 quic" platform/nginx/conf.d/*.conf; then
+            echo "❌ HTTP/3 QUIC listeners not found"
+            exit 1
+          fi
+          echo "✅ HTTP/3 configuration verified"
+
+  # Deploy to production (staging domains are served by same nginx)
+  deploy:
+    name: Deploy Platform Changes
+    needs: test
+    runs-on: ubuntu-latest
+    environment: staging  # Requires approval in GitHub settings if configured
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.PRODUCTION_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy nginx configuration
+        run: |
+          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.PRODUCTION_HOST }} << 'EOF'
+            set -e
+            cd /opt/multi-tenant-platform
+
+            # Pull latest changes
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Validate nginx config before reload
+            if ! docker exec platform-nginx nginx -t; then
+              echo "❌ Nginx config validation failed"
+              exit 1
+            fi
+
+            # Reload nginx (zero-downtime)
+            docker exec platform-nginx nginx -s reload
+            echo "✅ Nginx configuration reloaded"
+          EOF
+
+      - name: Wait for nginx to stabilize
+        run: sleep 5
+
+  # Validate staging domains work
+  validate-staging:
+    name: Validate Staging Domains
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.skip_validation }}
+    steps:
+      - name: Test staging.filter-ical.de
+        run: |
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://staging.filter-ical.de)
+          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "302" ]; then
+            echo "❌ staging.filter-ical.de returned: $HTTP_CODE"
+            exit 1
+          fi
+          echo "✅ staging.filter-ical.de: $HTTP_CODE"
+
+      - name: Test staging.paiss.me
+        run: |
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://staging.paiss.me)
+          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "302" ]; then
+            echo "❌ staging.paiss.me returned: $HTTP_CODE"
+            exit 1
+          fi
+          echo "✅ staging.paiss.me: $HTTP_CODE"
+
+      - name: Check HTTP/3 advertisement
+        run: |
+          if ! curl -sI https://staging.filter-ical.de | grep -i "alt-svc.*h3"; then
+            echo "❌ HTTP/3 Alt-Svc header not found"
+            exit 1
+          fi
+          echo "✅ HTTP/3 Alt-Svc header present"
+
+      - name: Validate production domains still work
+        run: |
+          # Ensure production wasn't affected
+          for domain in filter-ical.de paiss.me; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://$domain)
+            if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "302" ]; then
+              echo "❌ Production domain $domain returned: $HTTP_CODE"
+              exit 1
+            fi
+            echo "✅ $domain: $HTTP_CODE"
+          done
+
+  # Notify on completion
+  notify:
+    name: Send Notification
+    needs: [deploy, validate-staging]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Notify success
+        if: ${{ needs.validate-staging.result == 'success' }}
+        run: |
+          echo "✅ Staging deployment successful!"
+          echo "Ready for production use"
+
+      - name: Notify failure
+        if: ${{ needs.validate-staging.result == 'failure' || needs.deploy.result == 'failure' }}
+        run: |
+          echo "❌ Staging deployment failed"
+          echo "Check logs and rollback if necessary"
+          exit 1
