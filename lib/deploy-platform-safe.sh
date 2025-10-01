@@ -178,18 +178,21 @@ else
     fi
 
     log_info "Checking HTTP/3 configuration..."
-    if ! docker exec platform-nginx-staging nginx -T 2>/dev/null | grep -q "listen 443 quic"; then
+    QUIC_COUNT=$(docker exec platform-nginx-staging nginx -T 2>&1 | grep -c "listen 443 quic" || echo "0")
+    if [ "$QUIC_COUNT" -eq 0 ]; then
         log_error "HTTP/3 (QUIC) listener not found in staging config!"
+        log_info "Debug: Checking for any listen directives:"
+        docker exec platform-nginx-staging nginx -T 2>&1 | grep "listen 443" | head -10
         docker rm -f platform-nginx-staging
         exit 1
     fi
-    log_success "HTTP/3 configuration present"
+    log_success "HTTP/3 configuration present ($QUIC_COUNT QUIC listeners)"
 
     log_info "Verifying Alt-Svc header configuration..."
-    if ! docker exec platform-nginx-staging nginx -T 2>/dev/null | grep -q "Alt-Svc"; then
-        log_warning "Alt-Svc header not found in config"
-    else
+    if docker exec platform-nginx-staging nginx -T 2>&1 | grep -q "Alt-Svc"; then
         log_success "Alt-Svc header configured"
+    else
+        log_warning "Alt-Svc header not found in config"
     fi
 fi
 
