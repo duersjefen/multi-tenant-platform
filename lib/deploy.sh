@@ -190,13 +190,13 @@ deploy() {
             # Check if alembic exists in the container
             if docker exec "$BACKEND_CONTAINER" sh -c "command -v alembic" >/dev/null 2>&1; then
                 # First-time setup: stamp database if alembic_version table doesn't exist
-                if ! docker exec "$BACKEND_CONTAINER" sh -c "cd /app/backend && python -c \"from alembic import command; from alembic.config import Config; cfg = Config('/app/backend/alembic.ini'); command.current(cfg)\"" >/dev/null 2>&1; then
+                if ! docker exec "$BACKEND_CONTAINER" sh -c "cd /app && python -c \"from alembic import command; from alembic.config import Config; cfg = Config('/app/alembic.ini'); command.current(cfg)\"" >/dev/null 2>&1; then
                     echo "📌 First deployment: stamping database to current version..."
-                    docker exec "$BACKEND_CONTAINER" sh -c "cd /app/backend && alembic stamp head"
+                    docker exec "$BACKEND_CONTAINER" sh -c "cd /app && alembic stamp head"
                 fi
 
                 # Run migrations
-                if docker exec "$BACKEND_CONTAINER" sh -c "cd /app/backend && alembic upgrade head"; then
+                if docker exec "$BACKEND_CONTAINER" sh -c "cd /app && alembic upgrade head"; then
                     echo -e "${GREEN}✅ Database migrations applied${NC}"
                 else
                     echo -e "${RED}❌ Migration failed!${NC}"
