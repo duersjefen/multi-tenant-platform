@@ -89,8 +89,11 @@ echo ""
 separator "📋 STEP 1: PRE-FLIGHT CHECKS"
 
 log_info "Checking production nginx status..."
-if ! docker ps | grep -q "platform-nginx"; then
+NGINX_RUNNING=$(docker ps --filter "name=platform-nginx" --format "{{.Names}}" | grep -c "^platform-nginx$" || true)
+if [ "$NGINX_RUNNING" -eq 0 ]; then
     log_error "Production nginx is not running!"
+    log_info "Debug: Running containers:"
+    docker ps --filter "name=platform" --format "table {{.Names}}\t{{.Status}}"
     exit 1
 fi
 log_success "Production nginx is running"
