@@ -1,0 +1,81 @@
+# =============================================================================
+# Gabs Massage - Physiotherapy Scheduler
+# =============================================================================
+# Deployment configuration for production and staging environments
+# =============================================================================
+
+networks:
+  platform:
+    external: true
+    name: platform
+
+services:
+  # ===========================================================================
+  # PRODUCTION: gabs-massage-web
+  # ===========================================================================
+  gabs-massage-web:
+    image: ghcr.io/duersjefen/physiotherapy-scheduler:latest
+    container_name: gabs-massage-web
+    restart: unless-stopped
+    networks:
+      - platform
+    volumes:
+      # Persistent database storage
+      - gabs-massage-data:/app/data
+    environment:
+      - PORT=3000
+      - DATABASE_FILE=/app/data/physiotherapy.db
+      - AUTH_SECRET=${GABS_MASSAGE_AUTH_SECRET:-change-me-in-production}
+      - SESSION_TIMEOUT=60
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===========================================================================
+  # STAGING: gabs-massage-web-staging
+  # ===========================================================================
+  gabs-massage-web-staging:
+    image: ghcr.io/duersjefen/physiotherapy-scheduler:latest
+    container_name: gabs-massage-web-staging
+    restart: unless-stopped
+    networks:
+      - platform
+    volumes:
+      # Separate staging database
+      - gabs-massage-staging-data:/app/data
+    environment:
+      - PORT=3000
+      - DATABASE_FILE=/app/data/physiotherapy-staging.db
+      - AUTH_SECRET=${GABS_MASSAGE_STAGING_AUTH_SECRET:-staging-secret-key}
+      - SESSION_TIMEOUT=60
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+# =============================================================================
+# VOLUMES - Persistent Storage for SQLite Databases
+# =============================================================================
+volumes:
+  gabs-massage-data:
+    name: gabs-massage-data
+    driver: local
+
+  gabs-massage-staging-data:
+    name: gabs-massage-staging-data
+    driver: local

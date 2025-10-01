@@ -205,6 +205,102 @@ projects:
 
 
   # =============================================================================
+  # PROJECT: gabs-massage
+  # =============================================================================
+  gabs-massage:
+    # Basic information
+    name: "Gabs Massage - Physiotherapy Scheduler"
+    repository: "https://github.com/duersjefen/physiotherapy-scheduler"
+
+    # Docker images (built by app repo CI/CD)
+    images:
+      web: "ghcr.io/duersjefen/physiotherapy-scheduler"
+
+    # Domains
+    domains:
+      production:
+        - gabs-massage.de
+        - www.gabs-massage.de
+      staging:
+        subdomain: staging
+        domains:
+          - staging.gabs-massage.de
+
+    # Container configuration
+    containers:
+      web:
+        name: gabs-massage-web
+        port: 3000
+        health_check:
+          path: /health
+          expected_status: 200
+          timeout: 30
+          retries: 10
+          start_period: 40
+
+    # Environments
+    environments:
+      production:
+        containers:
+          - gabs-massage-web
+        deployment_strategy: blue-green
+        auto_rollback: true
+        health_check_timeout: 60
+        volumes:
+          - gabs-massage-data:/app/data  # SQLite database persistence
+
+      staging:
+        containers:
+          - gabs-massage-web-staging
+        deployment_strategy: direct
+        auto_rollback: true
+        health_check_timeout: 60
+        volumes:
+          - gabs-massage-staging-data:/app/data  # Separate staging database
+
+    # Nginx configuration
+    nginx:
+      # API routes (backend)
+      api_locations:
+        - /api
+
+      # Rate limiting
+      rate_limit:
+        zone: api
+        rate: 20r/s
+        burst: 40
+
+      # Timeouts (Clojure startup can be slower)
+      proxy_timeout: 90s
+      proxy_connect_timeout: 30s
+
+    # Monitoring & Alerts
+    monitoring:
+      enabled: true
+      alerts:
+        - name: production_down
+          condition: "up == 0"
+          duration: 2m
+          severity: critical
+
+        - name: high_error_rate
+          condition: "rate(http_5xx[5m]) > 0.05"
+          duration: 3m
+          severity: warning
+
+        - name: slow_responses
+          condition: "p95_latency > 3s"
+          duration: 5m
+          severity: warning
+
+    # Backup configuration
+    backup:
+      enabled: true
+      pre_deployment: true
+      retention: 7  # Keep last 7 backups (database snapshots)
+
+
+  # =============================================================================
   # TEMPLATE: Add new projects below using this structure
   # =============================================================================
   # my-new-app:
