@@ -115,12 +115,23 @@ services:
     volumes:
       - certbot-certs:/etc/letsencrypt
       - certbot-www:/var/www/certbot
-      - /opt/multi-tenant-platform/platform/scripts/certbot-renew.sh:/scripts/renew.sh:ro
+      - /opt/multi-tenant-platform/platform/scripts/reload-nginx-safe.sh:/scripts/reload-nginx.sh:ro
+      - /opt/multi-tenant-platform/lib/provision-ssl-certs.sh:/scripts/provision-ssl-certs.sh:ro
+      - /opt/multi-tenant-platform/config/projects.yml:/config/projects.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock  # For docker exec commands
     networks:
       - platform
-    # Certbot runs on-demand via cron or deployment scripts
-    # Not a long-running service
-    entrypoint: /bin/sh -c "trap exit TERM; while :; do sleep 12h & wait $${!}; certbot renew; done"
+    # Certbot renewal with deploy hooks (industry best practice)
+    # Deploy hook ONLY runs when certificates are actually renewed
+    # Also runs daily placeholder replacement check
+    entrypoint: /bin/sh -c "
+      apk add --no-cache docker-cli python3 py3-yaml openssl > /dev/null 2>&1;
+      trap exit TERM;
+      while :; do
+        certbot renew --deploy-hook '/scripts/reload-nginx.sh' --quiet;
+        /scripts/provision-ssl-certs.sh --replace-placeholders 2>&1 || true;
+        sleep 12h & wait $${!};
+      done"
     logging:
       driver: "json-file"
       options:
@@ -302,6 +313,34 @@ services:
       - platform
     depends_on:
       - nginx
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ===========================================================================
+  # SSL CERTIFICATE EXPORTER - Certificate Expiry Monitoring
+  # ===========================================================================
+  ssl-exporter:
+    image: enix/x509-certificate-exporter:latest
+    container_name: platform-ssl-exporter
+    restart: unless-stopped
+    command:
+      - --watch-dir=/etc/letsencrypt/live
+      - --watch-file=/etc/letsencrypt/live/*/fullchain.pem
+      - --watch-kubeconf=false
+      - --trim-path-components=3
+      - --expose-labels=dns_names
+      - --expose-per-cert-error-metrics
+      - --listen-address=:9793
+      - --log-level=info
+    ports:
+      - "127.0.0.1:9793:9793"
+    volumes:
+      - certbot-certs:/etc/letsencrypt:ro
+    networks:
+      - platform
     logging:
       driver: "json-file"
       options:

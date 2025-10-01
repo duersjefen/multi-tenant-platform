@@ -79,6 +79,69 @@ groups:
           description: "Container has restarted more than once in the last 5 minutes"
 
   # ===========================================================================
+  # SSL CERTIFICATE MONITORING
+  # ===========================================================================
+  - name: ssl_certificates
+    interval: 60s
+    rules:
+      # Certificate expiring in less than 30 days
+      - alert: SSLCertificateExpiringWarning
+        expr: (x509_cert_not_after - time()) / 86400 < 30
+        for: 1h
+        labels:
+          severity: warning
+          category: ssl
+        annotations:
+          summary: "SSL certificate for {{ $labels.dns_names }} expiring soon"
+          description: "Certificate expires in {{ $value }} days (threshold: 30 days)"
+
+      # Certificate expiring in less than 7 days
+      - alert: SSLCertificateExpiringCritical
+        expr: (x509_cert_not_after - time()) / 86400 < 7
+        for: 1h
+        labels:
+          severity: critical
+          category: ssl
+        annotations:
+          summary: "SSL certificate for {{ $labels.dns_names }} expiring VERY SOON"
+          description: "Certificate expires in {{ $value }} days (threshold: 7 days) - URGENT ACTION REQUIRED"
+
+      # Certificate has already expired
+      - alert: SSLCertificateExpired
+        expr: x509_cert_not_after - time() < 0
+        for: 5m
+        labels:
+          severity: critical
+          category: ssl
+        annotations:
+          summary: "SSL certificate for {{ $labels.dns_names }} has EXPIRED"
+          description: "Certificate expired {{ $value }} seconds ago - IMMEDIATE ACTION REQUIRED"
+
+      # Certificate read errors (renewal failures)
+      - alert: SSLCertificateReadError
+        expr: x509_read_errors > 0
+        for: 5m
+        labels:
+          severity: warning
+          category: ssl
+        annotations:
+          summary: "Error reading SSL certificate {{ $labels.file }}"
+          description: "Certificate file cannot be read - possible renewal failure or file corruption"
+
+      # Placeholder certificate detected (requires manual check)
+      # Note: Placeholder detection via .placeholder file check happens in certbot cron
+      # This alert catches certificates that are about to expire and might be placeholders
+      - alert: PossiblePlaceholderCertificate
+        expr: (x509_cert_not_after - time()) / 86400 < 90 and (x509_cert_not_after - x509_cert_not_before) / 86400 == 90
+        for: 1h
+        labels:
+          severity: info
+          category: ssl
+        annotations:
+          summary: "Possible placeholder certificate detected: {{ $labels.dns_names }}"
+          description: "Certificate has exactly 90 days validity (typical of placeholders) and is nearing expiry"
+
+  # ===========================================================================
   # PROJECT: filter-ical (Production)
   # ===========================================================================
   - name: filter_ical_production

@@ -64,6 +64,18 @@ scrape_configs:
           component: 'reverse-proxy'
 
   # ==========================================================================
+  # SSL CERTIFICATE METRICS
+  # ==========================================================================
+  - job_name: 'ssl-certificates'
+    static_configs:
+      - targets: ['ssl-exporter:9793']
+        labels:
+          service: 'ssl'
+          component: 'certificates'
+    scrape_interval: 60s  # Check every minute
+    scrape_timeout: 30s
+
+  # ==========================================================================
   # APPLICATION METRICS
   # ==========================================================================
   # Each application should expose /metrics endpoint
