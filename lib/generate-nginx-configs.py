@@ -134,13 +134,8 @@ server {{
         set $backend_port "{backend_container['port']}";
         proxy_pass http://$backend_host:$backend_port;
 
-        # Include standard proxy headers
+        # Include standard proxy headers (includes timeouts, buffering, WebSocket support)
         include /etc/nginx/includes/proxy-headers.conf;
-
-        # API-specific timeouts
-        proxy_connect_timeout {nginx_config.get('proxy_connect_timeout', '60s')};
-        proxy_send_timeout {nginx_config.get('proxy_timeout', '60s')};
-        proxy_read_timeout {nginx_config.get('proxy_timeout', '60s')};
     }}
 """
 
