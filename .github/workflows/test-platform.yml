@@ -22,13 +22,27 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Create mock SSL certificates
+        run: |
+          # Create mock certificate directories for testing
+          mkdir -p /tmp/letsencrypt/live/{filter-ical.de,staging.filter-ical.de,paiss.me,staging.paiss.me,monitoring.paiss.me}
+
+          # Generate self-signed certs for syntax validation
+          for domain in filter-ical.de staging.filter-ical.de paiss.me staging.paiss.me monitoring.paiss.me; do
+            openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+              -keyout /tmp/letsencrypt/live/$domain/privkey.pem \
+              -out /tmp/letsencrypt/live/$domain/fullchain.pem \
+              -subj "/CN=$domain" 2>/dev/null
+          done
+
       - name: Test nginx config syntax
         run: |
-          # Test nginx syntax without mounting (CI doesn't have /opt paths)
+          # Test nginx syntax with mock SSL certificates
           docker run --rm \
             -v ${{ github.workspace }}/platform/nginx/nginx.conf:/etc/nginx/nginx.conf:ro \
             -v ${{ github.workspace }}/platform/nginx/includes:/etc/nginx/includes:ro \
             -v ${{ github.workspace }}/platform/nginx/conf.d:/etc/nginx/conf.d:ro \
+            -v /tmp/letsencrypt:/etc/letsencrypt:ro \
             macbre/nginx-http3:latest nginx -t
 
       - name: Validate docker-compose syntax
