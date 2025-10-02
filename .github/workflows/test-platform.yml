@@ -33,59 +33,77 @@ jobs:
 
       - name: Create mock SSL certificates
         run: |
+          set -e  # Exit on any error
+
           # Extract all domains from projects.yml dynamically
-          DOMAINS=$(python3 <<'PYTHON'
+          python3 > /tmp/domains.txt <<'PYTHON'
           import yaml
+          import sys
 
-          with open('config/projects.yml', 'r') as f:
-              config = yaml.safe_load(f)
+          try:
+              with open('config/projects.yml', 'r') as f:
+                  config = yaml.safe_load(f)
 
-          domains = []
-          for project_name, project in config.get('projects', {}).items():
-              domain_config = project.get('domains', {})
+              domains = []
+              for project_name, project in config.get('projects', {}).items():
+                  domain_config = project.get('domains', {})
 
-              # Production domains
-              if 'production' in domain_config:
-                  prod = domain_config['production']
-                  if isinstance(prod, list):
-                      domains.extend(prod)
-                  else:
-                      domains.append(prod)
+                  # Production domains
+                  if 'production' in domain_config:
+                      prod = domain_config['production']
+                      if isinstance(prod, list):
+                          domains.extend(prod)
+                      else:
+                          domains.append(prod)
 
-              # Staging domains
-              if 'staging' in domain_config:
-                  staging = domain_config['staging'].get('domains', [])
-                  if isinstance(staging, list):
-                      domains.extend(staging)
-                  else:
-                      domains.append(staging)
+                  # Staging domains
+                  if 'staging' in domain_config:
+                      staging = domain_config['staging'].get('domains', [])
+                      if isinstance(staging, list):
+                          domains.extend(staging)
+                      else:
+                          domains.append(staging)
 
-          # Print unique domains, one per line
-          for domain in sorted(set(domains)):
-              print(domain)
+              # Print unique domains, one per line
+              for domain in sorted(set(domains)):
+                  print(domain)
+
+              sys.stderr.write(f"Extracted {len(set(domains))} domains\n")
+
+          except Exception as e:
+              sys.stderr.write(f"ERROR: {e}\n")
+              sys.exit(1)
           PYTHON
-          )
 
-          echo "📋 Domains found in projects.yml:"
-          echo "$DOMAINS"
+          # Validate we got domains
+          if [ ! -s /tmp/domains.txt ]; then
+            echo "❌ ERROR: No domains extracted from projects.yml"
+            exit 1
+          fi
+
+          DOMAIN_COUNT=$(wc -l < /tmp/domains.txt)
+          echo "📋 Found $DOMAIN_COUNT domains in projects.yml:"
+          cat /tmp/domains.txt
           echo ""
 
-          # Create certificate directories
-          echo "$DOMAINS" | while read domain; do
+          # Create certificate directories and certs
+          while IFS= read -r domain; do
+            [ -z "$domain" ] && continue
+            echo "Creating certificate for: $domain"
             sudo mkdir -p "/tmp/letsencrypt/live/$domain"
             sudo openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
               -keyout "/tmp/letsencrypt/live/$domain/privkey.pem" \
               -out "/tmp/letsencrypt/live/$domain/fullchain.pem" \
-              -subj "/CN=$domain" 2>/dev/null
-            echo "  ✅ Created mock certificate for: $domain"
-          done
+              -subj "/CN=$domain" 2>&1 | grep -v "^......." || true
+            echo "  ✅ $domain"
+          done < /tmp/domains.txt
 
           # Make certificates readable
           sudo chmod -R 755 /tmp/letsencrypt
           sudo chmod -R 644 /tmp/letsencrypt/live/*/privkey.pem
 
           echo ""
-          echo "✅ Created $(echo "$DOMAINS" | wc -l) mock SSL certificates"
+          echo "✅ Created $DOMAIN_COUNT mock SSL certificates"
 
       - name: Test nginx config syntax
         run: |

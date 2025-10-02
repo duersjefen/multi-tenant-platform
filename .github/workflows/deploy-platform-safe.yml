@@ -51,32 +51,37 @@ jobs:
 
       - name: Create mock SSL certificates
         run: |
-          # Extract all domains from projects.yml dynamically
-          DOMAINS=$(python3 -c "
-          import yaml
-          with open('config/projects.yml', 'r') as f:
-              config = yaml.safe_load(f)
-          domains = []
-          for project_name, project in config.get('projects', {}).items():
-              domain_config = project.get('domains', {})
-              if 'production' in domain_config:
-                  prod = domain_config['production']
-                  domains.extend(prod if isinstance(prod, list) else [prod])
-              if 'staging' in domain_config:
-                  staging = domain_config['staging'].get('domains', [])
-                  domains.extend(staging if isinstance(staging, list) else [staging])
-          for domain in sorted(set(domains)):
-              print(domain)
-          ")
+          set -e
+          python3 -c "
+          import yaml, sys
+          try:
+              with open('config/projects.yml', 'r') as f:
+                  config = yaml.safe_load(f)
+              domains = []
+              for project_name, project in config.get('projects', {}).items():
+                  domain_config = project.get('domains', {})
+                  if 'production' in domain_config:
+                      prod = domain_config['production']
+                      domains.extend(prod if isinstance(prod, list) else [prod])
+                  if 'staging' in domain_config:
+                      staging = domain_config['staging'].get('domains', [])
+                      domains.extend(staging if isinstance(staging, list) else [staging])
+              for domain in sorted(set(domains)):
+                  print(domain)
+          except Exception as e:
+              sys.stderr.write(f'ERROR: {e}\n')
+              sys.exit(1)
+          " > /tmp/domains.txt
 
           # Create certificate directories
-          echo "$DOMAINS" | while read domain; do
+          while IFS= read -r domain; do
+            [ -z "$domain" ] && continue
             sudo mkdir -p "/tmp/letsencrypt/live/$domain"
             sudo openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
               -keyout "/tmp/letsencrypt/live/$domain/privkey.pem" \
               -out "/tmp/letsencrypt/live/$domain/fullchain.pem" \
-              -subj "/CN=$domain" 2>/dev/null
-          done
+              -subj "/CN=$domain" 2>&1 | grep -v "^......." || true
+          done < /tmp/domains.txt
 
           # Make certificates readable
           sudo chmod -R 755 /tmp/letsencrypt
