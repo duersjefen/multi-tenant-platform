@@ -123,6 +123,36 @@ Current applications on this platform:
 - **Alertmanager** sends notifications (email/Slack/PagerDuty)
 - Built-in alerts for downtime, errors, slow responses
 
+### SSL Certificate Management
+- **Automatic provisioning** via Let's Encrypt
+- **Multi-domain certificates** for production domains (e.g., `example.com` + `www.example.com`)
+- **Smart detection** - only requests missing certificates
+- **Placeholder certificates** for local/pre-DNS environments
+- **Zero-downtime renewal** via certbot cron jobs
+
+```bash
+# Provision all missing SSL certificates
+make provision-ssl
+
+# Preview what would be provisioned (dry-run)
+make provision-ssl-dry-run
+
+# Force renewal of all certificates
+ssh server "cd /opt/multi-tenant-platform && ./lib/provision-ssl-certs.sh --force"
+```
+
+**How it works:**
+1. Script reads all domains from `config/projects.yml`
+2. Groups production domains together (e.g., `domain.com,www.domain.com`)
+3. Checks which certificates exist (skips existing valid certs)
+4. Requests multi-domain Let's Encrypt certificates via HTTP-01 challenge
+5. Falls back to self-signed placeholders if DNS not configured yet
+
+**Certificate storage:**
+- Production domains: `/etc/letsencrypt/live/primary-domain/` (covers all SANs)
+- Staging domains: Separate certificates per environment
+- Nginx automatically uses primary domain path for all aliases
+
 ## 🌟 Architecture Principles
 
 This platform follows industry best practices:

@@ -91,8 +91,9 @@ fi
 echo "Reading projects.yml..."
 echo ""
 
-# Extract all domains from projects.yml using Python
-DOMAINS=$(python3 <<'PYTHON'
+# Extract domain groups from projects.yml using Python
+# Groups production domains together for multi-domain certificates
+DOMAIN_GROUPS=$(python3 <<'PYTHON'
 import yaml
 import sys
 
@@ -101,30 +102,32 @@ try:
         config = yaml.safe_load(f)
 
     projects = config.get('projects', {})
-    all_domains = []
+    domain_groups = []
 
     for project_name, project in projects.items():
         domains_config = project.get('domains', {})
 
-        # Production domains
+        # Production domains - group together for one certificate
         if 'production' in domains_config:
             prod_domains = domains_config['production']
             if isinstance(prod_domains, list):
-                all_domains.extend(prod_domains)
+                # Multiple production domains → one multi-domain certificate
+                domain_groups.append(','.join(sorted(prod_domains)))
             else:
-                all_domains.append(prod_domains)
+                # Single production domain
+                domain_groups.append(prod_domains)
 
-        # Staging domains
+        # Staging domains - separate certificate for each
         if 'staging' in domains_config:
             staging_domains = domains_config['staging'].get('domains', [])
             if isinstance(staging_domains, list):
-                all_domains.extend(staging_domains)
+                domain_groups.extend(staging_domains)
             else:
-                all_domains.append(staging_domains)
+                domain_groups.append(staging_domains)
 
-    # Print unique domains, one per line
-    for domain in sorted(set(all_domains)):
-        print(domain)
+    # Print unique domain groups, one per line
+    for group in sorted(set(domain_groups)):
+        print(group)
 
 except Exception as e:
     print(f"Error: {e}", file=sys.stderr)
@@ -132,66 +135,68 @@ except Exception as e:
 PYTHON
 )
 
-if [ -z "$DOMAINS" ]; then
-    log_error "No domains found in projects.yml"
+if [ -z "$DOMAIN_GROUPS" ]; then
+    log_error "No domain groups found in projects.yml"
     exit 1
 fi
 
-log_info "Found domains in projects.yml:"
-echo "$DOMAINS" | while read domain; do
-    echo "  - $domain"
+log_info "Found domain groups in projects.yml:"
+echo "$DOMAIN_GROUPS" | while read domain_group; do
+    echo "  - $domain_group"
 done
 echo ""
 
 # Check which certificates already exist
 log_info "Checking existing SSL certificates..."
-MISSING_DOMAINS=()
-EXISTING_DOMAINS=()
+MISSING_GROUPS=()
+EXISTING_GROUPS=()
 
-while IFS= read -r domain; do
-    CERT_PATH="$CERT_BASE_PATH/$domain/fullchain.pem"
+while IFS= read -r domain_group; do
+    # Extract first domain from group (certificate is stored under first domain)
+    PRIMARY_DOMAIN="${domain_group%%,*}"
+    CERT_PATH="$CERT_BASE_PATH/$PRIMARY_DOMAIN/fullchain.pem"
 
     # Check certificate existence via Docker if on server
     if [ "$ON_SERVER" = true ]; then
         if docker exec platform-certbot test -f "$CERT_PATH" 2>/dev/null; then
             # Check if it's a placeholder
-            if docker exec platform-certbot test -f "$CERT_BASE_PATH/$domain/.placeholder" 2>/dev/null; then
-                echo "  ⚠ $domain (placeholder certificate)"
-                MISSING_DOMAINS+=("$domain")
+            if docker exec platform-certbot test -f "$CERT_BASE_PATH/$PRIMARY_DOMAIN/.placeholder" 2>/dev/null; then
+                echo "  ⚠ $domain_group (placeholder certificate)"
+                MISSING_GROUPS+=("$domain_group")
             else
-                EXISTING_DOMAINS+=("$domain")
-                echo "  ✓ $domain (real certificate)"
+                EXISTING_GROUPS+=("$domain_group")
+                echo "  ✓ $domain_group (real certificate)"
             fi
         else
-            MISSING_DOMAINS+=("$domain")
-            echo "  ✗ $domain (missing)"
+            MISSING_GROUPS+=("$domain_group")
+            echo "  ✗ $domain_group (missing)"
         fi
     else
         # Local check (direct filesystem access)
         if [ -f "$CERT_PATH" ]; then
             # Check if it's a placeholder
-            if [ -f "$CERT_BASE_PATH/$domain/.placeholder" ]; then
-                echo "  ⚠ $domain (placeholder certificate)"
-                MISSING_DOMAINS+=("$domain")
+            if [ -f "$CERT_BASE_PATH/$PRIMARY_DOMAIN/.placeholder" ]; then
+                echo "  ⚠ $domain_group (placeholder certificate)"
+                MISSING_GROUPS+=("$domain_group")
             else
-                EXISTING_DOMAINS+=("$domain")
-                echo "  ✓ $domain (real certificate)"
+                EXISTING_GROUPS+=("$domain_group")
+                echo "  ✓ $domain_group (real certificate)"
             fi
         else
-            MISSING_DOMAINS+=("$domain")
-            echo "  ✗ $domain (missing)"
+            MISSING_GROUPS+=("$domain_group")
+            echo "  ✗ $domain_group (missing)"
         fi
     fi
-done <<< "$DOMAINS"
+done <<< "$DOMAIN_GROUPS"
 
 echo ""
 
 # Report status
-if [ ${#EXISTING_DOMAINS[@]} -gt 0 ]; then
-    log_success "${#EXISTING_DOMAINS[@]} certificate(s) already exist"
+if [ ${#EXISTING_GROUPS[@]} -gt 0 ]; then
+    log_success "${#EXISTING_GROUPS[@]} certificate(s) already exist"
 fi
 
-if [ ${#MISSING_DOMAINS[@]} -eq 0 ] && [ "$FORCE" = false ]; then
+if [ ${#MISSING_GROUPS[@]} -eq 0 ] && [ "$FORCE" = false ]; then
     log_success "All SSL certificates are already provisioned!"
     log_info "Use --force to renew existing certificates"
     exit 0
@@ -200,44 +205,54 @@ fi
 # Provision missing certificates
 if [ "$FORCE" = true ]; then
     log_warning "Force mode enabled - will request all certificates"
-    DOMAINS_TO_PROVISION=($(echo "$DOMAINS"))
+    mapfile -t GROUPS_TO_PROVISION <<< "$DOMAIN_GROUPS"
 else
-    DOMAINS_TO_PROVISION=("${MISSING_DOMAINS[@]}")
+    GROUPS_TO_PROVISION=("${MISSING_GROUPS[@]}")
 fi
 
-separator "📜 PROVISIONING ${#DOMAINS_TO_PROVISION[@]} SSL CERTIFICATE(S)"
+separator "📜 PROVISIONING ${#GROUPS_TO_PROVISION[@]} SSL CERTIFICATE(S)"
 
-for domain in "${DOMAINS_TO_PROVISION[@]}"; do
+for domain_group in "${GROUPS_TO_PROVISION[@]}"; do
     echo ""
-    log_info "Provisioning SSL certificate for: $domain"
+    log_info "Provisioning SSL certificate for: $domain_group"
+
+    # Split domain group into array
+    IFS=',' read -ra DOMAINS <<< "$domain_group"
+    PRIMARY_DOMAIN="${DOMAINS[0]}"
 
     if [ "$DRY_RUN" = true ]; then
-        log_warning "DRY RUN: Would run certbot for $domain"
+        log_warning "DRY RUN: Would run certbot for $domain_group"
         continue
     fi
 
     # Try to get real Let's Encrypt certificate
     CERTBOT_SUCCESS=false
     if [ "$ON_SERVER" = true ]; then
+        # Build certbot command with multiple -d flags
+        CERTBOT_DOMAINS=""
+        for domain in "${DOMAINS[@]}"; do
+            CERTBOT_DOMAINS="$CERTBOT_DOMAINS -d $domain"
+        done
+
         if docker compose -f platform/docker-compose.platform.yml run --rm \
             --entrypoint certbot certbot \
             certonly --webroot -w /var/www/certbot \
-            -d "$domain" \
+            $CERTBOT_DOMAINS \
             --email "$SSL_EMAIL" \
             --agree-tos \
             --no-eff-email \
             --non-interactive 2>/dev/null; then
             CERTBOT_SUCCESS=true
-            log_success "Real Let's Encrypt certificate obtained: $domain"
+            log_success "Real Let's Encrypt certificate obtained: $domain_group"
 
             # Remove placeholder marker if it exists
-            rm -f "$CERT_BASE_PATH/$domain/.placeholder"
+            rm -f "$CERT_BASE_PATH/$PRIMARY_DOMAIN/.placeholder"
         fi
     fi
 
     # If certbot failed or we're running locally, create placeholder certificate
     if [ "$CERTBOT_SUCCESS" = false ]; then
-        log_warning "Let's Encrypt failed for $domain - creating placeholder certificate"
+        log_warning "Let's Encrypt failed for $domain_group - creating placeholder certificate"
         log_info "Reasons for failure:"
         log_info "  - DNS not pointing to this server yet"
         log_info "  - Port 80 not accessible"
@@ -245,18 +260,48 @@ for domain in "${DOMAINS_TO_PROVISION[@]}"; do
         log_info "  - Running locally (not on production server)"
         echo ""
 
-        # Create directory
-        CERT_DIR="$CERT_BASE_PATH/$domain"
+        # Create directory for primary domain
+        CERT_DIR="$CERT_BASE_PATH/$PRIMARY_DOMAIN"
         mkdir -p "$CERT_DIR"
 
-        # Generate self-signed certificate
+        # Generate self-signed certificate with all domains as SANs
         log_info "Generating self-signed placeholder..."
+
+        # Build subjectAltName list
+        SAN_LIST=""
+        for i in "${!DOMAINS[@]}"; do
+            if [ $i -eq 0 ]; then
+                SAN_LIST="DNS:${DOMAINS[$i]}"
+            else
+                SAN_LIST="$SAN_LIST,DNS:${DOMAINS[$i]}"
+            fi
+        done
+
+        # Create OpenSSL config for multi-domain cert
+        cat > /tmp/openssl-san.cnf <<EOF
+[req]
+default_bits = 2048
+prompt = no
+default_md = sha256
+distinguished_name = dn
+req_extensions = v3_req
+
+[dn]
+CN = $PRIMARY_DOMAIN
+
+[v3_req]
+subjectAltName = $SAN_LIST
+EOF
+
         openssl req -x509 -nodes -newkey rsa:2048 \
             -days 90 \
             -keyout "$CERT_DIR/privkey.pem" \
             -out "$CERT_DIR/fullchain.pem" \
-            -subj "/CN=$domain" \
+            -config /tmp/openssl-san.cnf \
+            -extensions v3_req \
             2>/dev/null
+
+        rm /tmp/openssl-san.cnf
 
         # Create chain.pem (required by nginx)
         cp "$CERT_DIR/fullchain.pem" "$CERT_DIR/chain.pem"
@@ -264,7 +309,7 @@ for domain in "${DOMAINS_TO_PROVISION[@]}"; do
         # Mark as placeholder
         touch "$CERT_DIR/.placeholder"
 
-        log_success "Placeholder certificate created: $domain"
+        log_success "Placeholder certificate created: $domain_group"
         log_warning "→ Nginx will start, but browsers will show security warning"
         log_info "→ Replace with real cert later: ./lib/provision-ssl-certs.sh"
         echo ""
