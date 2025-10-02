@@ -99,44 +99,33 @@ jobs:
           fi
           echo "✅ All configs have HTTP/3 support"
 
-      - name: Install nginx
+      - name: Create mock SSL certificates
         run: |
-          sudo apt-get update
-          sudo apt-get install -y nginx
-
-      - name: Test nginx config syntax
-        run: |
-          echo "📋 Testing nginx config syntax..."
-
-          # Create minimal nginx.conf for testing
-          sudo cp platform/nginx/nginx.conf /etc/nginx/nginx.conf
-
-          # Copy conf.d files
-          sudo mkdir -p /etc/nginx/conf.d
-          sudo mkdir -p /etc/nginx/includes
-          sudo cp platform/nginx/conf.d/*.conf /etc/nginx/conf.d/
-          sudo cp platform/nginx/includes/*.conf /etc/nginx/includes/ || true
-
-          # Create mock SSL certificates dynamically from projects.yml
           ./lib/extract-domains.sh > /tmp/domains.txt
 
           echo "Creating mock certificates..."
           while read domain; do
-            sudo mkdir -p "/etc/letsencrypt/live/$domain"
+            sudo mkdir -p "/tmp/letsencrypt/live/$domain"
             sudo openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
-              -keyout "/etc/letsencrypt/live/$domain/privkey.pem" \
-              -out "/etc/letsencrypt/live/$domain/fullchain.pem" \
+              -keyout "/tmp/letsencrypt/live/$domain/privkey.pem" \
+              -out "/tmp/letsencrypt/live/$domain/fullchain.pem" \
               -subj "/CN=$domain" 2>/dev/null
             echo "  ✅ $domain"
           done < /tmp/domains.txt
 
-          # Test config
-          if sudo nginx -t; then
-            echo "✅ Nginx config syntax is valid"
-          else
-            echo "❌ Nginx config syntax check failed"
-            exit 1
-          fi
+          sudo chmod -R 755 /tmp/letsencrypt
+          sudo chmod -R 644 /tmp/letsencrypt/live/*/privkey.pem
+
+      - name: Test nginx config syntax
+        run: |
+          echo "📋 Testing nginx config syntax..."
+          docker run --rm --user 0 \
+            -v ${{ github.workspace }}/platform/nginx/nginx.conf:/etc/nginx/nginx.conf:ro \
+            -v ${{ github.workspace }}/platform/nginx/includes:/etc/nginx/includes:ro \
+            -v ${{ github.workspace }}/platform/nginx/conf.d:/etc/nginx/conf.d:ro \
+            -v /tmp/letsencrypt:/etc/letsencrypt:ro \
+            macbre/nginx-http3:latest nginx -t
+          echo "✅ Nginx config syntax is valid"
 
       - name: Summary
         if: success()
