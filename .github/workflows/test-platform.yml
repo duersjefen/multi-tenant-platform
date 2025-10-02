@@ -34,23 +34,7 @@ jobs:
       - name: Extract domains from projects.yml
         id: domains
         run: |
-          python3 << 'EOF' > /tmp/domains.txt
-          import yaml
-          with open('config/projects.yml') as f:
-              config = yaml.safe_load(f)
-          domains = set()
-          for project in config.get('projects', {}).values():
-              dc = project.get('domains', {})
-              if 'production' in dc:
-                  p = dc['production']
-                  domains.update(p if isinstance(p, list) else [p])
-              if 'staging' in dc:
-                  s = dc['staging'].get('domains', [])
-                  domains.update(s if isinstance(s, list) else [s])
-          for d in sorted(domains):
-              print(d)
-          EOF
-
+          ./lib/extract-domains.sh > /tmp/domains.txt
           echo "Domains extracted:"
           cat /tmp/domains.txt
 
