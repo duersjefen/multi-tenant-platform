@@ -1,0 +1,15 @@
+# Environment files (contain secrets)
+**/.env
+**/.env.*
+!**/.env.example
+
+# Backup files
+*.backup
+*.bak
+
+# Log files
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
