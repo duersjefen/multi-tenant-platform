@@ -219,7 +219,8 @@ for domain in "${DOMAINS_TO_PROVISION[@]}"; do
     # Try to get real Let's Encrypt certificate
     CERTBOT_SUCCESS=false
     if [ "$ON_SERVER" = true ]; then
-        if docker compose -f platform/docker-compose.platform.yml run --rm certbot \
+        if docker compose -f platform/docker-compose.platform.yml run --rm \
+            --entrypoint certbot certbot \
             certonly --webroot -w /var/www/certbot \
             -d "$domain" \
             --email "$SSL_EMAIL" \
