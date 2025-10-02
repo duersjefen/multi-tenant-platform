@@ -7,12 +7,14 @@ on:
       - 'platform/nginx/**'
       - 'config/projects.yml'
       - 'lib/generate-nginx-configs.py'
+      - 'lib/extract-domains.sh'
   pull_request:
     branches: [main, develop]
     paths:
       - 'platform/nginx/**'
       - 'config/projects.yml'
       - 'lib/generate-nginx-configs.py'
+      - 'lib/extract-domains.sh'
   workflow_dispatch:
 
 jobs:

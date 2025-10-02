@@ -9,6 +9,7 @@ on:
       - 'platform/nginx/**'
       - 'platform/docker-compose.platform.yml'
       - 'platform/monitoring/**'
+      - 'lib/extract-domains.sh'
 
   # Manual deployment option
   workflow_dispatch:
