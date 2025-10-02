@@ -151,18 +151,36 @@ EXISTING_DOMAINS=()
 while IFS= read -r domain; do
     CERT_PATH="$CERT_BASE_PATH/$domain/fullchain.pem"
 
-    if [ -f "$CERT_PATH" ]; then
-        # Check if it's a placeholder
-        if [ -f "$CERT_BASE_PATH/$domain/.placeholder" ]; then
-            echo "  ⚠ $domain (placeholder certificate)"
-            MISSING_DOMAINS+=("$domain")
+    # Check certificate existence via Docker if on server
+    if [ "$ON_SERVER" = true ]; then
+        if docker exec platform-certbot test -f "$CERT_PATH" 2>/dev/null; then
+            # Check if it's a placeholder
+            if docker exec platform-certbot test -f "$CERT_BASE_PATH/$domain/.placeholder" 2>/dev/null; then
+                echo "  ⚠ $domain (placeholder certificate)"
+                MISSING_DOMAINS+=("$domain")
+            else
+                EXISTING_DOMAINS+=("$domain")
+                echo "  ✓ $domain (real certificate)"
+            fi
         else
-            EXISTING_DOMAINS+=("$domain")
-            echo "  ✓ $domain (real certificate)"
+            MISSING_DOMAINS+=("$domain")
+            echo "  ✗ $domain (missing)"
         fi
     else
-        MISSING_DOMAINS+=("$domain")
-        echo "  ✗ $domain (missing)"
+        # Local check (direct filesystem access)
+        if [ -f "$CERT_PATH" ]; then
+            # Check if it's a placeholder
+            if [ -f "$CERT_BASE_PATH/$domain/.placeholder" ]; then
+                echo "  ⚠ $domain (placeholder certificate)"
+                MISSING_DOMAINS+=("$domain")
+            else
+                EXISTING_DOMAINS+=("$domain")
+                echo "  ✓ $domain (real certificate)"
+            fi
+        else
+            MISSING_DOMAINS+=("$domain")
+            echo "  ✗ $domain (missing)"
+        fi
     fi
 done <<< "$DOMAINS"
 
