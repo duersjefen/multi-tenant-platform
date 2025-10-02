@@ -43,39 +43,31 @@ jobs:
 
       - name: Create mock SSL certificates
         run: |
-          set -e
-          python3 -c "
-          import yaml, sys
-          try:
-              with open('config/projects.yml', 'r') as f:
-                  config = yaml.safe_load(f)
-              domains = []
-              for project_name, project in config.get('projects', {}).items():
-                  domain_config = project.get('domains', {})
-                  if 'production' in domain_config:
-                      prod = domain_config['production']
-                      domains.extend(prod if isinstance(prod, list) else [prod])
-                  if 'staging' in domain_config:
-                      staging = domain_config['staging'].get('domains', [])
-                      domains.extend(staging if isinstance(staging, list) else [staging])
-              for domain in sorted(set(domains)):
-                  print(domain)
-          except Exception as e:
-              sys.stderr.write(f'ERROR: {e}\n')
-              sys.exit(1)
-          " > /tmp/domains.txt
+          python3 << 'EOF' > /tmp/domains.txt
+          import yaml
+          with open('config/projects.yml') as f:
+              config = yaml.safe_load(f)
+          domains = set()
+          for project in config.get('projects', {}).values():
+              dc = project.get('domains', {})
+              if 'production' in dc:
+                  p = dc['production']
+                  domains.update(p if isinstance(p, list) else [p])
+              if 'staging' in dc:
+                  s = dc['staging'].get('domains', [])
+                  domains.update(s if isinstance(s, list) else [s])
+          for d in sorted(domains):
+              print(d)
+          EOF
 
-          # Create certificate directories
-          while IFS= read -r domain; do
-            [ -z "$domain" ] && continue
+          while read domain; do
             sudo mkdir -p "/tmp/letsencrypt/live/$domain"
             sudo openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
               -keyout "/tmp/letsencrypt/live/$domain/privkey.pem" \
               -out "/tmp/letsencrypt/live/$domain/fullchain.pem" \
-              -subj "/CN=$domain" 2>&1 | grep -v "^......." || true
+              -subj "/CN=$domain" 2>/dev/null
           done < /tmp/domains.txt
 
-          # Make certificates readable
           sudo chmod -R 755 /tmp/letsencrypt
           sudo chmod -R 644 /tmp/letsencrypt/live/*/privkey.pem
 

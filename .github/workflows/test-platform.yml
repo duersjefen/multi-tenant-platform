@@ -31,79 +31,42 @@ jobs:
       - name: Install PyYAML
         run: pip install pyyaml
 
+      - name: Extract domains from projects.yml
+        id: domains
+        run: |
+          python3 << 'EOF' > /tmp/domains.txt
+          import yaml
+          with open('config/projects.yml') as f:
+              config = yaml.safe_load(f)
+          domains = set()
+          for project in config.get('projects', {}).values():
+              dc = project.get('domains', {})
+              if 'production' in dc:
+                  p = dc['production']
+                  domains.update(p if isinstance(p, list) else [p])
+              if 'staging' in dc:
+                  s = dc['staging'].get('domains', [])
+                  domains.update(s if isinstance(s, list) else [s])
+          for d in sorted(domains):
+              print(d)
+          EOF
+
+          echo "Domains extracted:"
+          cat /tmp/domains.txt
+
       - name: Create mock SSL certificates
         run: |
-          set -e  # Exit on any error
-
-          # Extract all domains from projects.yml dynamically
-          python3 > /tmp/domains.txt <<'PYTHON'
-          import yaml
-          import sys
-
-          try:
-              with open('config/projects.yml', 'r') as f:
-                  config = yaml.safe_load(f)
-
-              domains = []
-              for project_name, project in config.get('projects', {}).items():
-                  domain_config = project.get('domains', {})
-
-                  # Production domains
-                  if 'production' in domain_config:
-                      prod = domain_config['production']
-                      if isinstance(prod, list):
-                          domains.extend(prod)
-                      else:
-                          domains.append(prod)
-
-                  # Staging domains
-                  if 'staging' in domain_config:
-                      staging = domain_config['staging'].get('domains', [])
-                      if isinstance(staging, list):
-                          domains.extend(staging)
-                      else:
-                          domains.append(staging)
-
-              # Print unique domains, one per line
-              for domain in sorted(set(domains)):
-                  print(domain)
-
-              sys.stderr.write(f"Extracted {len(set(domains))} domains\n")
-
-          except Exception as e:
-              sys.stderr.write(f"ERROR: {e}\n")
-              sys.exit(1)
-          PYTHON
-
-          # Validate we got domains
-          if [ ! -s /tmp/domains.txt ]; then
-            echo "❌ ERROR: No domains extracted from projects.yml"
-            exit 1
-          fi
-
-          DOMAIN_COUNT=$(wc -l < /tmp/domains.txt)
-          echo "📋 Found $DOMAIN_COUNT domains in projects.yml:"
-          cat /tmp/domains.txt
-          echo ""
-
-          # Create certificate directories and certs
-          while IFS= read -r domain; do
-            [ -z "$domain" ] && continue
-            echo "Creating certificate for: $domain"
+          while read domain; do
             sudo mkdir -p "/tmp/letsencrypt/live/$domain"
             sudo openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
               -keyout "/tmp/letsencrypt/live/$domain/privkey.pem" \
               -out "/tmp/letsencrypt/live/$domain/fullchain.pem" \
-              -subj "/CN=$domain" 2>&1 | grep -v "^......." || true
-            echo "  ✅ $domain"
+              -subj "/CN=$domain" 2>/dev/null
           done < /tmp/domains.txt
 
-          # Make certificates readable
           sudo chmod -R 755 /tmp/letsencrypt
           sudo chmod -R 644 /tmp/letsencrypt/live/*/privkey.pem
-
-          echo ""
-          echo "✅ Created $DOMAIN_COUNT mock SSL certificates"
+          echo "Created $(wc -l < /tmp/domains.txt) certificates"
 
       - name: Test nginx config syntax
         run: |
