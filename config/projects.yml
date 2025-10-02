@@ -2,7 +2,7 @@
 # This file defines all projects hosted on this platform
 # Add new projects here to automatically configure deployment, nginx, monitoring, etc.
 
-version: "1.0"
+version: "1.0"  # Updated to test CI workflows
 
 # Platform-wide settings
 platform:
