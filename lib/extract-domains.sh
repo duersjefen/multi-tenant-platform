@@ -9,6 +9,13 @@ with open('config/projects.yml') as f:
     config = yaml.safe_load(f)
 
 domains = set()
+
+# Extract platform monitoring domain
+platform = config.get('platform', {})
+if 'monitoring_domain' in platform:
+    domains.add(platform['monitoring_domain'])
+
+# Extract project domains
 for project in config.get('projects', {}).values():
     dc = project.get('domains', {})
     if 'production' in dc:
