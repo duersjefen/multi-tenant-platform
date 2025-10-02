@@ -115,14 +115,32 @@ jobs:
           sudo cp platform/nginx/conf.d/*.conf /etc/nginx/conf.d/
           sudo cp platform/nginx/includes/*.conf /etc/nginx/includes/ || true
 
-          # Create mock SSL certificates for testing
-          sudo mkdir -p /etc/letsencrypt/live/{filter-ical.de,staging.filter-ical.de,paiss.me,staging.paiss.me,gabs-massage.de,staging.gabs-massage.de,monitoring.paiss.me}
+          # Create mock SSL certificates dynamically from projects.yml
+          DOMAINS=$(python3 -c "
+          import yaml
+          with open('config/projects.yml', 'r') as f:
+              config = yaml.safe_load(f)
+          domains = []
+          for project_name, project in config.get('projects', {}).items():
+              domain_config = project.get('domains', {})
+              if 'production' in domain_config:
+                  prod = domain_config['production']
+                  domains.extend(prod if isinstance(prod, list) else [prod])
+              if 'staging' in domain_config:
+                  staging = domain_config['staging'].get('domains', [])
+                  domains.extend(staging if isinstance(staging, list) else [staging])
+          for domain in sorted(set(domains)):
+              print(domain)
+          ")
 
-          for domain in filter-ical.de staging.filter-ical.de paiss.me staging.paiss.me gabs-massage.de staging.gabs-massage.de monitoring.paiss.me; do
+          echo "Creating mock certificates for domains from projects.yml..."
+          echo "$DOMAINS" | while read domain; do
+            sudo mkdir -p "/etc/letsencrypt/live/$domain"
             sudo openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
-              -keyout /etc/letsencrypt/live/$domain/privkey.pem \
-              -out /etc/letsencrypt/live/$domain/fullchain.pem \
+              -keyout "/etc/letsencrypt/live/$domain/privkey.pem" \
+              -out "/etc/letsencrypt/live/$domain/fullchain.pem" \
               -subj "/CN=$domain" 2>/dev/null
+            echo "  ✅ $domain"
           done
 
           # Test config

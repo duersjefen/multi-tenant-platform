@@ -23,22 +23,69 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
       - name: Create mock SSL certificates
         run: |
-          # Create mock certificate directories for testing
-          sudo mkdir -p /tmp/letsencrypt/live/{filter-ical.de,staging.filter-ical.de,paiss.me,staging.paiss.me,monitoring.paiss.me}
+          # Extract all domains from projects.yml dynamically
+          DOMAINS=$(python3 <<'PYTHON'
+          import yaml
 
-          # Generate self-signed certs for syntax validation
-          for domain in filter-ical.de staging.filter-ical.de paiss.me staging.paiss.me monitoring.paiss.me; do
+          with open('config/projects.yml', 'r') as f:
+              config = yaml.safe_load(f)
+
+          domains = []
+          for project_name, project in config.get('projects', {}).items():
+              domain_config = project.get('domains', {})
+
+              # Production domains
+              if 'production' in domain_config:
+                  prod = domain_config['production']
+                  if isinstance(prod, list):
+                      domains.extend(prod)
+                  else:
+                      domains.append(prod)
+
+              # Staging domains
+              if 'staging' in domain_config:
+                  staging = domain_config['staging'].get('domains', [])
+                  if isinstance(staging, list):
+                      domains.extend(staging)
+                  else:
+                      domains.append(staging)
+
+          # Print unique domains, one per line
+          for domain in sorted(set(domains)):
+              print(domain)
+          PYTHON
+          )
+
+          echo "📋 Domains found in projects.yml:"
+          echo "$DOMAINS"
+          echo ""
+
+          # Create certificate directories
+          echo "$DOMAINS" | while read domain; do
+            sudo mkdir -p "/tmp/letsencrypt/live/$domain"
             sudo openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
-              -keyout /tmp/letsencrypt/live/$domain/privkey.pem \
-              -out /tmp/letsencrypt/live/$domain/fullchain.pem \
+              -keyout "/tmp/letsencrypt/live/$domain/privkey.pem" \
+              -out "/tmp/letsencrypt/live/$domain/fullchain.pem" \
               -subj "/CN=$domain" 2>/dev/null
+            echo "  ✅ Created mock certificate for: $domain"
           done
 
           # Make certificates readable
           sudo chmod -R 755 /tmp/letsencrypt
           sudo chmod -R 644 /tmp/letsencrypt/live/*/privkey.pem
+
+          echo ""
+          echo "✅ Created $(echo "$DOMAINS" | wc -l) mock SSL certificates"
 
       - name: Test nginx config syntax
         run: |

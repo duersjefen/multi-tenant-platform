@@ -41,12 +41,54 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Create mock SSL certificates
+        run: |
+          # Extract all domains from projects.yml dynamically
+          DOMAINS=$(python3 -c "
+          import yaml
+          with open('config/projects.yml', 'r') as f:
+              config = yaml.safe_load(f)
+          domains = []
+          for project_name, project in config.get('projects', {}).items():
+              domain_config = project.get('domains', {})
+              if 'production' in domain_config:
+                  prod = domain_config['production']
+                  domains.extend(prod if isinstance(prod, list) else [prod])
+              if 'staging' in domain_config:
+                  staging = domain_config['staging'].get('domains', [])
+                  domains.extend(staging if isinstance(staging, list) else [staging])
+          for domain in sorted(set(domains)):
+              print(domain)
+          ")
+
+          # Create certificate directories
+          echo "$DOMAINS" | while read domain; do
+            sudo mkdir -p "/tmp/letsencrypt/live/$domain"
+            sudo openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+              -keyout "/tmp/letsencrypt/live/$domain/privkey.pem" \
+              -out "/tmp/letsencrypt/live/$domain/fullchain.pem" \
+              -subj "/CN=$domain" 2>/dev/null
+          done
+
+          # Make certificates readable
+          sudo chmod -R 755 /tmp/letsencrypt
+          sudo chmod -R 644 /tmp/letsencrypt/live/*/privkey.pem
+
       - name: Validate nginx syntax
         run: |
-          docker run --rm \
+          docker run --rm --user 0 \
             -v ${{ github.workspace }}/platform/nginx/nginx.conf:/etc/nginx/nginx.conf:ro \
             -v ${{ github.workspace }}/platform/nginx/includes:/etc/nginx/includes:ro \
             -v ${{ github.workspace }}/platform/nginx/conf.d:/etc/nginx/conf.d:ro \
+            -v /tmp/letsencrypt:/etc/letsencrypt:ro \
             macbre/nginx-http3:latest nginx -t
 
       - name: Validate docker-compose
