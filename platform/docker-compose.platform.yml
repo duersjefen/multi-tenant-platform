@@ -189,6 +189,7 @@ services:
       - GF_INSTALL_PLUGINS=grafana-piechart-panel
       - GF_SERVER_ROOT_URL=https://monitoring.paiss.me
       - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/platform-overview.json
       - GF_LOG_MODE=console file
       - GF_LOG_LEVEL=info
       - GF_DASHBOARDS_VERSIONS_TO_KEEP=20
