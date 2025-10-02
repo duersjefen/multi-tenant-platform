@@ -415,10 +415,27 @@ Never edit nginx configs manually! Instead:
    # - Validates configuration
    ```
 
-5. **Deploy:**
+5. **Generate deployment workflows (automatic CI/CD):**
    ```bash
-   # On server - deployment script auto-regenerates configs
-   ./lib/deploy-platform.sh nginx
+   # Generate GitHub Actions workflows for the new project
+   ./lib/generate-project-workflows.sh new-project
+
+   # This automatically:
+   # - Clones the project repository
+   # - Creates deploy-production.yml (manual deployment)
+   # - Creates deploy-staging.yml (automatic on push to main)
+   # - Commits and pushes to the project repository
+   ```
+
+6. **Deploy:**
+   ```bash
+   # Platform deployment (nginx, SSL certificates)
+   ./lib/deploy-platform-safe.sh nginx
+
+   # This automatically:
+   # - Provisions SSL certificates for new domains (via provision-ssl-certs.sh)
+   # - Regenerates nginx configs from projects.yml
+   # - Validates and deploys using staging-first strategy
 
    # Or manually
    docker compose -f platform/docker-compose.platform.yml exec nginx nginx -s reload
@@ -429,6 +446,8 @@ Never edit nginx configs manually! Instead:
 - ✅ Ensures consistent configuration
 - ✅ Validated before deployment
 - ✅ Version controlled in `projects.yml`
+- ✅ Automatic SSL provisioning for new domains
+- ✅ Automatic CI/CD workflows for new projects
 
 ### SSL Certificate Management
 
@@ -595,6 +614,85 @@ docker compose -f platform/docker-compose.platform.yml run --rm certbot \
 ✅ **Self-healing** - Auto-replaces placeholders when DNS configured
 ✅ **Idempotent** - Safe to run provisioning multiple times
 ✅ **Failure isolation** - Certificate issues don't break entire platform
+
+---
+
+## 🤖 WORKFLOW AUTOMATION
+
+### Automatic Deployment Workflow Generation
+
+**✨ NEW: Generate CI/CD workflows from projects.yml**
+
+The platform can automatically generate GitHub Actions workflows for any project defined in `projects.yml`:
+
+```bash
+# Generate workflows for a specific project
+./lib/generate-project-workflows.sh gabs-massage
+
+# Generate workflows for all projects
+./lib/generate-project-workflows.sh --all
+```
+
+**What it does:**
+
+1. **Reads project configuration** from `config/projects.yml`
+2. **Clones the project repository** (temporary, in `/tmp/`)
+3. **Generates two workflow files:**
+   - `deploy-production.yml` - Manual deployment to production
+   - `deploy-staging.yml` - Automatic deployment on push to main
+4. **Commits and pushes** the workflows to the project repository
+
+**Generated workflows include:**
+
+- ✅ SSH connection to production server
+- ✅ Integration with platform deployment system (`./lib/deploy.sh`)
+- ✅ Automatic version tagging
+- ✅ Health check verification
+- ✅ Deployment summaries in GitHub Actions UI
+- ✅ Environment-specific configuration (staging vs production)
+
+**Example: deploy-staging.yml**
+```yaml
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'Dockerfile'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to staging
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.PRODUCTION_HOST }} \
+            "./lib/deploy.sh project-name staging latest"
+```
+
+**When to use:**
+
+- ✅ Adding a new project to the platform
+- ✅ Standardizing deployment workflows across projects
+- ✅ Ensuring consistency with platform deployment system
+- ✅ Updating workflows after changes to deployment process
+
+**Benefits:**
+
+- 🚀 **Instant CI/CD** for new projects
+- 📝 **Consistent workflows** across all projects
+- 🔄 **Single source of truth** (projects.yml)
+- ⚡ **Zero manual configuration** needed
+- 🛡️ **Tested patterns** from existing projects
+
+**Requirements:**
+
+Projects must have:
+- Repository URL in projects.yml
+- SSH secrets configured in GitHub: `SSH_PRIVATE_KEY`, `SSH_USER`, `PRODUCTION_HOST`
+- Docker images published to a registry (e.g., ghcr.io)
 
 ---
 
