@@ -1,4 +1,4 @@
-# CLAUDE.md - gabs-massage Project Instructions
+# CLAUDE.md - {{PROJECT_NAME}} Project Instructions
 
 Production-ready Vue 3 + Python FastAPI web application with comprehensive TDD workflow and PostgreSQL database.
 
@@ -36,9 +36,9 @@ make deploy-production     # Deploy to production (requires manual approval)
 make status                # Check deployment status
 
 # Local Development URLs
-# Frontend:  http://localhost:3000
-# Backend:   http://localhost:3000
-# API Docs:  http://localhost:3000/docs
+# Frontend:  http://localhost:{{FRONTEND_PORT}}
+# Backend:   http://localhost:{{BACKEND_PORT}}
+# API Docs:  http://localhost:{{BACKEND_PORT}}/docs
 # Database:  localhost:5432 (PostgreSQL in Docker)
 
 # NEVER use manual server commands - always use Makefile
@@ -133,18 +133,18 @@ return { get user() { return appStore.user } }
 ## 🚢 INFRASTRUCTURE
 
 ### Local Development (WSL2 or Linux)
-- **Backend:** Uvicorn on `localhost:3000` (hot reload)
-- **Frontend:** Vite on `localhost:3000` (hot reload)
+- **Backend:** Uvicorn on `localhost:{{BACKEND_PORT}}` (hot reload)
+- **Frontend:** Vite on `localhost:{{FRONTEND_PORT}}` (hot reload)
 - **Database:** PostgreSQL in Docker on `localhost:5432`
-  - Container: `gabs-massage-postgres-dev`
-  - Database: `gabs-massage_development`
+  - Container: `{{PROJECT_NAME}}-postgres-dev`
+  - Database: `{{PROJECT_NAME}}_development`
   - Managed by: `docker-compose.dev.yml`
 
 ### Production Stack
-- **Backend:** Python FastAPI + Uvicorn (port 3000)
-- **Frontend:** Vue 3 SPA with Vite + Pinia (port 3000)
-- **Domain:** https://gabs-massage.de
-- **Staging:** https://staging.gabs-massage.de
+- **Backend:** Python FastAPI + Uvicorn (port {{BACKEND_PORT}})
+- **Frontend:** Vue 3 SPA with Vite + Pinia (port {{FRONTEND_PORT}})
+- **Domain:** https://{{DOMAIN}}
+- **Staging:** https://staging.{{DOMAIN}}
 - **Platform:** Multi-tenant platform on EC2
 
 ### Database Migrations
@@ -176,25 +176,25 @@ version: '3.8'
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: gabs-massage-postgres-dev
+    container_name: {{PROJECT_NAME}}-postgres-dev
     restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: gabs-massage_dev
+      POSTGRES_USER: {{PROJECT_NAME}}_dev
       POSTGRES_PASSWORD: dev_password_change_me
-      POSTGRES_DB: gabs-massage_development
+      POSTGRES_DB: {{PROJECT_NAME}}_development
     volumes:
       - postgres-dev-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gabs-massage_dev"]
+      test: ["CMD-SHELL", "pg_isready -U {{PROJECT_NAME}}_dev"]
       interval: 5s
       timeout: 3s
       retries: 5
 
 volumes:
   postgres-dev-data:
-    name: gabs-massage-dev-db
+    name: {{PROJECT_NAME}}-dev-db
 ```
 
 **Configure Alembic:**
@@ -288,8 +288,8 @@ migrate-current: ## Show current migration version
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/duersjefen/physiotherapy-scheduler.git
-cd physiotherapy-scheduler
+git clone https://github.com/{{REPO_OWNER}}/{{REPO_NAME}}.git
+cd {{REPO_NAME}}
 
 # 2. Install dependencies
 make setup
@@ -304,9 +304,9 @@ make setup
 make dev
 
 # Servers will be available at:
-# - Frontend: http://localhost:3000
-# - Backend: http://localhost:3000
-# - API Docs: http://localhost:3000/docs
+# - Frontend: http://localhost:{{FRONTEND_PORT}}
+# - Backend: http://localhost:{{BACKEND_PORT}}
+# - API Docs: http://localhost:{{BACKEND_PORT}}/docs
 
 # 4. Run tests
 make test
@@ -321,7 +321,7 @@ make deploy-staging
 ### Project Structure (Recommended)
 
 ```
-physiotherapy-scheduler/
+{{REPO_NAME}}/
 ├── backend/
 │   ├── app/
 │   │   ├── data/          # Pure business logic functions
@@ -352,7 +352,7 @@ physiotherapy-scheduler/
 
 **Platform Documentation:**
 - `/home/martijn/Desktop/multi-tenant-platform/CLAUDE.md` - Platform architecture
-- Platform deployment: `./lib/deploy.sh gabs-massage <environment>`
+- Platform deployment: `./lib/deploy.sh {{PROJECT_NAME}} <environment>`
 
 **Reference Projects:**
 - filter-ical: Full-featured example with PostgreSQL + Alembic
@@ -362,4 +362,4 @@ physiotherapy-scheduler/
 
 **Generated:** Auto-generated from multi-tenant-platform template
 **Platform:** https://github.com/duersjefen/multi-tenant-platform
-**Last Updated:** 2025-10-02
+**Last Updated:** {{GENERATION_DATE}}

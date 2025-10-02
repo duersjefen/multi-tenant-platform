@@ -397,6 +397,19 @@ EOF
     log_success "$PROJECT: Makefile created"
 
     # ==========================================================================
+    # Generate CLAUDE.md Documentation
+    # ==========================================================================
+
+    log_info "$PROJECT: Generating CLAUDE.md documentation..."
+
+    # Call the CLAUDE.md generator
+    if "$SCRIPT_DIR/generate-project-claude-md.sh" "$PROJECT" "CLAUDE.md" > /dev/null 2>&1; then
+        log_success "$PROJECT: CLAUDE.md created"
+    else
+        log_warning "$PROJECT: Failed to generate CLAUDE.md (continuing anyway)"
+    fi
+
+    # ==========================================================================
     # Configure GitHub Secrets (Platform Credentials)
     # ==========================================================================
 
@@ -461,7 +474,7 @@ EOF
     # ==========================================================================
 
     # Check for both modified and untracked files
-    git add .github/workflows/ Makefile
+    git add .github/workflows/ Makefile CLAUDE.md
 
     if ! git diff --cached --quiet; then
         log_info "$PROJECT: Committing workflow changes..."
@@ -475,12 +488,18 @@ Added:
 - .github/workflows/deploy-production.yml (manual deployment)
 - .github/workflows/deploy-staging.yml (automatic on push to main)
 - Makefile (dev & deployment commands)
+- CLAUDE.md (comprehensive development guide)
 
 Features:
 - Automatic staging deployment on push
 - Manual production deployment with version control
 - GitHub secrets auto-configured
 - Platform integration commands
+- PostgreSQL + Alembic migration workflow
+- TDD and contract-driven development patterns
+
+Documentation:
+  cat CLAUDE.md          # Read comprehensive development guide
 
 Usage:
   make help              # Show all commands
