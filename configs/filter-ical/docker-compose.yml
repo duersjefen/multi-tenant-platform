@@ -50,11 +50,11 @@ services:
     environment:
       - VITE_API_BASE_URL=${VITE_API_BASE_URL:-https://filter-ical.de}
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80/"]
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 30s
       timeout: 10s
       retries: 10
-      start_period: 30s
+      start_period: 40s
     logging:
       driver: "json-file"
       options:
