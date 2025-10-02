@@ -22,7 +22,9 @@ services:
     image: ghcr.io/duersjefen/filter-ical-backend:${VERSION:-latest}
     restart: unless-stopped
     networks:
-      - platform
+      platform:
+        aliases:
+          - backend  # Allow DNS resolution by service name
     env_file:
       - .env.${ENVIRONMENT:-production}
     healthcheck:
@@ -45,12 +47,17 @@ services:
     image: ghcr.io/duersjefen/filter-ical-frontend:${VERSION:-latest}
     restart: unless-stopped
     networks:
-      - platform
+      platform:
+        aliases:
+          - frontend  # Allow DNS resolution by service name
     env_file:
       - .env.${ENVIRONMENT:-production}
-    # Healthcheck temporarily disabled for debugging
     healthcheck:
-      disable: true
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s  # Give nginx time to start
     logging:
       driver: "json-file"
       options:

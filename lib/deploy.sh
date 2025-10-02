@@ -231,7 +231,7 @@ deploy() {
 
             # Auto-rollback if backup exists
             echo -e "${YELLOW}🔄 Attempting automatic rollback...${NC}"
-            # restore_backup "$PROJECT_NAME" "$ENVIRONMENT" "latest"
+            restore_backup "$PROJECT_NAME" "$ENVIRONMENT" "latest"
 
             exit 1
         fi
