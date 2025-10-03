@@ -130,18 +130,23 @@ restore_backup() {
 
     # Stop current containers
     echo "🛑 Stopping current containers..."
-    docker-compose -f "/deploy/apps/${project_name}/docker-compose.yml" down
+    cd "$PLATFORM_ROOT/configs/${project_name}"
+    COMPOSE_PROJECT="${project_name}-${environment}"
+    docker-compose -p "$COMPOSE_PROJECT" down
 
     # Restore Docker images
     echo "📦 Restoring Docker images..."
     # Docker images are already tagged, just need to reference them
 
-    # Restore volumes
+    # Restore volumes (only for this specific backup)
     echo "💾 Restoring volumes..."
-    for volume_backup in "$backup_dir"/*_*.tar.gz; do
+    local backup_timestamp
+    backup_timestamp=$(echo "$backup_name" | sed 's/^backup_//')
+
+    for volume_backup in "$backup_dir"/*_${backup_timestamp}.tar.gz; do
         if [ -f "$volume_backup" ]; then
             local volume_name
-            volume_name=$(basename "$volume_backup" .tar.gz | sed 's/_[0-9]*$//')
+            volume_name=$(basename "$volume_backup" "_${backup_timestamp}.tar.gz")
 
             # Restore volume
             docker run --rm \
@@ -156,15 +161,17 @@ restore_backup() {
 
     # Restore configuration
     echo "📝 Restoring configuration..."
-    local config_backup="${backup_dir}/config_*.tar.gz"
-    if ls $config_backup 1> /dev/null 2>&1; then
-        tar xzf "$config_backup" -C "/deploy/apps/${project_name}/"
+    local config_backup="${backup_dir}/config_${backup_timestamp}.tar.gz"
+    if [ -f "$config_backup" ]; then
+        tar xzf "$config_backup" -C "$PLATFORM_ROOT/configs/${project_name}/"
+        echo "  Restored configuration from $backup_name"
     fi
 
-    # Restart containers with restored images
+    # Restart containers with restored images (using backup-tagged images)
     echo "🚀 Starting containers from backup..."
-    # This would need to be customized per project
-    # docker-compose -f "/deploy/apps/${project_name}/docker-compose.yml" up -d
+    # TODO: Update docker-compose to use backup-tagged images
+    # For now, just bring up with current config
+    docker-compose -p "$COMPOSE_PROJECT" up -d
 
     echo -e "${GREEN}✅ Backup restored: $backup_name${NC}"
     return 0
