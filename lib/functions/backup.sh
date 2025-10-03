@@ -200,3 +200,30 @@ cleanup_old_backups() {
     echo -e "${GREEN}✅ Cleanup complete${NC}"
     return 0
 }
+
+# =============================================================================
+# get_latest_backup
+# Returns the name of the most recent backup for a project
+# =============================================================================
+get_latest_backup() {
+    local project_name="$1"
+    local environment="$2"
+    local backup_dir="/opt/backups/${project_name}/${environment}"
+
+    if [ ! -d "$backup_dir" ]; then
+        return 1
+    fi
+
+    # Find most recent .meta file (sorted by modification time)
+    # Returns just the backup name without .meta extension
+    local latest
+    latest=$(ls -t "$backup_dir"/*.meta 2>/dev/null | head -1)
+
+    if [ -z "$latest" ]; then
+        return 1
+    fi
+
+    # Strip path and .meta extension
+    basename "$latest" .meta
+    return 0
+}

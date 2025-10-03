@@ -53,10 +53,18 @@ rollback() {
     # Send notification
     notify_rollback "$PROJECT_NAME" "$ENVIRONMENT" "Manual rollback requested"
 
-    # List available backups if "latest" was not specified
+    # Resolve "latest" to actual backup name
     if [ "$BACKUP_NAME" = "latest" ]; then
         echo "Finding most recent backup..."
-        list_backups "$PROJECT_NAME" "$ENVIRONMENT"
+        BACKUP_NAME=$(get_latest_backup "$PROJECT_NAME" "$ENVIRONMENT")
+
+        if [ -z "$BACKUP_NAME" ]; then
+            echo -e "${RED}❌ No backups found for $PROJECT_NAME ($ENVIRONMENT)${NC}"
+            list_backups "$PROJECT_NAME" "$ENVIRONMENT" || true
+            return 1
+        fi
+
+        echo -e "${GREEN}✓ Using backup: $BACKUP_NAME${NC}"
     fi
 
     # Restore backup
