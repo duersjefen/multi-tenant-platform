@@ -152,72 +152,146 @@ name: Deploy to Production
 on:
   workflow_dispatch:  # Manual deployment only for production
     inputs:
-      version:
-        description: 'Docker image tag to deploy'
-        required: false
-        default: 'latest'
+      confirm:
+        description: 'Type "deploy" to confirm production deployment'
+        required: true
+        default: ''
 
 concurrency:
   group: deploy-production
   cancel-in-progress: false
 
 jobs:
+  validate-input:
+    name: Validate Deployment Request
+    runs-on: ubuntu-latest
+    steps:
+      - name: ✅ Validate confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "deploy" ]; then
+            echo "❌ Deployment cancelled: confirmation not provided"
+            echo "   Please type 'deploy' to confirm"
+            exit 1
+          fi
+          echo "✅ Deployment confirmed"
+
   deploy:
     name: Deploy to Production
     runs-on: ubuntu-latest
+    needs: validate-input
     environment: production
+
     steps:
-      - name: Setup SSH
+      - name: 🔑 Setup SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.PRODUCTION_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Deploy to production server
+      - name: 📊 Pre-Deployment Status
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.PRODUCTION_HOST }}
         run: |
-          VERSION="${{ inputs.version }}"
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.PRODUCTION_HOST }} << 'REMOTE'
+          echo "📊 Current production status:"
+          ssh ${SSH_USER}@${SSH_HOST} 'docker ps --filter "name=PROJECT_NAME" --format "{{.Names}}: {{.Status}}"' || echo "No containers running"
+
+      - name: 🚀 Deploy to Production
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.PRODUCTION_HOST }}
+        run: |
+          ssh -i ~/.ssh/id_rsa ${SSH_USER}@${SSH_HOST} << 'REMOTE'
             set -e
+
+            echo "🚀 Starting production deployment..."
+            echo "⚠️  PRODUCTION DEPLOYMENT - Extra validation enabled"
+
             cd /opt/multi-tenant-platform
 
-            echo "🚀 Deploying PROJECT_NAME to production..."
-
-            # Set version in environment file if specified
-            if [ -n "$VERSION" ] && [ "$VERSION" != "latest" ]; then
-              echo "VERSION=$VERSION" > configs/PROJECT_NAME/.env.production.override
+            # Check disk space
+            echo "🔍 Checking disk space..."
+            DISK_AVAIL=$(df -h /opt | tail -1 | awk '{print $4}' | sed 's/G//')
+            if (( $(echo "$DISK_AVAIL < 5" | bc -l) )); then
+              echo "❌ Insufficient disk space: ${DISK_AVAIL}G available (need 5G)"
+              exit 1
             fi
+            echo "✅ Sufficient disk space: ${DISK_AVAIL}G available"
 
+            # Authenticate to GitHub Container Registry
+            echo "🔑 Authenticating to GitHub Container Registry..."
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u duersjefen --password-stdin
+
+            # Run deployment
+            echo "🚢 Deploying PROJECT_NAME to production..."
+            PLATFORM_ROOT=/opt/multi-tenant-platform \
+            ENVIRONMENT=production \
             ./lib/deploy.sh PROJECT_NAME production
 
             echo "✅ Deployment complete"
           REMOTE
 
-      - name: Verify deployment
+      - name: 🧪 Run Smoke Tests
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.PRODUCTION_HOST }}
         run: |
-          sleep 10
-          # Add health check verification here
-          echo "✅ Production deployment verified"
+          echo "🧪 Running smoke tests..."
+          sleep 15
 
-  notify:
-    name: Deployment Summary
-    needs: deploy
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Report success
-        if: ${{ needs.deploy.result == 'success' }}
+          # Test backend health (if exists)
+          if ssh ${SSH_USER}@${SSH_HOST} 'docker ps --format "{{.Names}}" | grep -q "PROJECT_NAME-backend-production"'; then
+            MAX_RETRIES=6
+            RETRY_COUNT=0
+            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+              if ssh ${SSH_USER}@${SSH_HOST} 'docker exec PROJECT_NAME-backend-production curl -f http://localhost:3000/health 2>/dev/null'; then
+                echo "✅ Backend is healthy"
+                break
+              else
+                RETRY_COUNT=$((RETRY_COUNT + 1))
+                if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+                  echo "❌ Backend health check failed after $MAX_RETRIES attempts"
+                  exit 1
+                fi
+                echo "⏳ Waiting for backend... (attempt $RETRY_COUNT/$MAX_RETRIES)"
+                sleep 10
+              fi
+            done
+          fi
+
+          # Test frontend health (if exists)
+          if ssh ${SSH_USER}@${SSH_HOST} 'docker ps --format "{{.Names}}" | grep -q "PROJECT_NAME-frontend-production"'; then
+            if ! ssh ${SSH_USER}@${SSH_HOST} 'docker exec PROJECT_NAME-frontend-production curl -f http://localhost/health 2>/dev/null || docker exec PROJECT_NAME-frontend-production curl -f http://localhost/ 2>/dev/null'; then
+              echo "❌ Frontend health check failed"
+              exit 1
+            fi
+            echo "✅ Frontend is healthy"
+          fi
+
+          echo "✅ All smoke tests passed"
+
+      - name: 📢 Deployment Success
+        if: success()
         run: |
           echo "## ✅ Production Deployment Successful" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Project:** PROJECT_NAME" >> $GITHUB_STEP_SUMMARY
           echo "**Environment:** Production" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** ${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployed by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
 
-      - name: Report failure
-        if: ${{ needs.deploy.result == 'failure' }}
+      - name: 🔄 Rollback on Failure
+        if: failure()
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.PRODUCTION_HOST }}
         run: |
-          echo "## ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+          echo "❌ PRODUCTION DEPLOYMENT FAILED!"
+          echo "🔄 Initiating automatic rollback..."
+          ssh ${SSH_USER}@${SSH_HOST} \
+            'cd /opt/multi-tenant-platform && ./lib/rollback.sh PROJECT_NAME production' || true
+          echo "🔄 Rollback complete"
           exit 1
 EOF
 
@@ -236,16 +310,12 @@ EOF
 name: Deploy to Staging
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Build and Push Docker Images"]
+    types:
+      - completed
     branches:
       - main
-    paths:
-      - 'src/**'
-      - 'public/**'
-      - 'resources/**'
-      - 'Dockerfile'
-      - '.github/workflows/deploy-staging.yml'
-
   workflow_dispatch:  # Allow manual triggers
 
 concurrency:
@@ -256,51 +326,89 @@ jobs:
   deploy:
     name: Deploy to Staging
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+
+    environment:
+      name: staging
+
     steps:
-      - name: Setup SSH
+      - name: 🔑 Setup SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.PRODUCTION_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Deploy to staging environment
+      - name: 🚀 Deploy to Staging
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.PRODUCTION_HOST }}
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.PRODUCTION_HOST }} << 'REMOTE'
+          ssh -i ~/.ssh/id_rsa ${SSH_USER}@${SSH_HOST} << 'REMOTE'
             set -e
             cd /opt/multi-tenant-platform
 
             echo "🚀 Deploying PROJECT_NAME to staging..."
+
+            # Authenticate to GitHub Container Registry
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u duersjefen --password-stdin
+
+            # Run deployment
+            PLATFORM_ROOT=/opt/multi-tenant-platform \
+            ENVIRONMENT=staging \
             ./lib/deploy.sh PROJECT_NAME staging
 
             echo "✅ Staging deployment complete"
           REMOTE
 
-      - name: Verify staging deployment
+      - name: 🧪 Run Smoke Tests
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.PRODUCTION_HOST }}
         run: |
+          echo "🧪 Running smoke tests..."
           sleep 10
-          # Add staging health check here
-          echo "✅ Staging deployment verified"
 
-  notify:
-    name: Deployment Summary
-    needs: deploy
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Report success
-        if: ${{ needs.deploy.result == 'success' }}
+          # Test backend health (if exists)
+          if ssh ${SSH_USER}@${SSH_HOST} 'docker ps --format "{{.Names}}" | grep -q "PROJECT_NAME-backend-staging"'; then
+            if ! ssh ${SSH_USER}@${SSH_HOST} 'docker exec PROJECT_NAME-backend-staging curl -f http://localhost:3000/health 2>/dev/null'; then
+              echo "❌ Backend health check failed"
+              exit 1
+            fi
+            echo "✅ Backend is healthy"
+          fi
+
+          # Test frontend health (if exists)
+          if ssh ${SSH_USER}@${SSH_HOST} 'docker ps --format "{{.Names}}" | grep -q "PROJECT_NAME-frontend-staging"'; then
+            if ! ssh ${SSH_USER}@${SSH_HOST} 'docker exec PROJECT_NAME-frontend-staging curl -f http://localhost/health 2>/dev/null || docker exec PROJECT_NAME-frontend-staging curl -f http://localhost/ 2>/dev/null'; then
+              echo "❌ Frontend health check failed"
+              exit 1
+            fi
+            echo "✅ Frontend is healthy"
+          fi
+
+          echo "✅ All smoke tests passed"
+
+      - name: 📢 Deployment Success
+        if: success()
         run: |
           echo "## ✅ Staging Deployment Successful" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Project:** PROJECT_NAME" >> $GITHUB_STEP_SUMMARY
           echo "**Environment:** Staging" >> $GITHUB_STEP_SUMMARY
           echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
 
-      - name: Report failure
-        if: ${{ needs.deploy.result == 'failure' }}
+      - name: 🔄 Rollback on Failure
+        if: failure()
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.PRODUCTION_HOST }}
         run: |
-          echo "## ❌ Staging Deployment Failed" >> $GITHUB_STEP_SUMMARY
+          echo "❌ Deployment failed! Attempting rollback..."
+          ssh ${SSH_USER}@${SSH_HOST} \
+            'cd /opt/multi-tenant-platform && ./lib/rollback.sh PROJECT_NAME staging' || true
+          echo "🔄 Rollback complete"
           exit 1
 EOF
 
