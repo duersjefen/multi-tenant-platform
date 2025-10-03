@@ -114,6 +114,9 @@ validate_container_health() {
         local health_status
         health_status=$(docker inspect --format='{{.State.Health.Status}}' "$container_name" 2>/dev/null || echo "none")
 
+        # Debug: log actual health status
+        echo "[DEBUG] Container: $container_name, Health Status: '$health_status'"
+
         case "$health_status" in
             "healthy")
                 echo -e "${GREEN}✅ Container healthy: $container_name${NC}"
