@@ -53,7 +53,7 @@ services:
     env_file:
       - .env.${ENVIRONMENT:-production}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      test: ["CMD-SHELL", "curl -f http://localhost/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
