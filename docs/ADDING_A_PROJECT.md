@@ -146,11 +146,11 @@ projects:
 
 ### Step 2: Create Docker Compose File
 
-Create `/deploy/apps/task-manager/docker-compose.yml`:
+Create `configs/task-manager/docker-compose.yml`:
 
 ```bash
-mkdir -p /deploy/apps/task-manager
-vim /deploy/apps/task-manager/docker-compose.yml
+mkdir -p /deploy/configs/task-manager
+vim /deploy/configs/task-manager/docker-compose.yml
 ```
 
 ```yaml
@@ -170,11 +170,15 @@ services:
   # BACKEND
   # ===========================================================================
   backend:
-    container_name: task-manager-backend
+    container_name: task-manager-backend${ENVIRONMENT:+-}${ENVIRONMENT}
     image: ${DOCKER_REGISTRY:-ghcr.io}/myuser/task-manager-backend:${VERSION:-latest}
     restart: unless-stopped
     networks:
-      - platform
+      platform:
+        aliases:
+          - backend  # Allows frontend to connect via 'backend' service name
+    env_file:
+      - .env.${ENVIRONMENT:-production}
     environment:
       - NODE_ENV=production
       - DATABASE_URL=${DATABASE_URL}
@@ -196,14 +200,15 @@ services:
   # FRONTEND
   # ===========================================================================
   frontend:
-    container_name: task-manager-frontend
+    container_name: task-manager-frontend${ENVIRONMENT:+-}${ENVIRONMENT}
     image: ${DOCKER_REGISTRY:-ghcr.io}/myuser/task-manager-frontend:${VERSION:-latest}
     restart: unless-stopped
     networks:
-      - platform
-    environment:
-      - NEXT_PUBLIC_API_URL=${API_URL}
-      # Add your frontend's environment variables
+      platform:
+        aliases:
+          - frontend
+    env_file:
+      - .env.${ENVIRONMENT:-production}
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/"]
       interval: 30s
@@ -222,13 +227,31 @@ services:
 - **Health checks must match** `projects.yml` exactly
 - **Use environment variables** for configuration (set in `.env` files)
 - **Connect to `platform` network** to communicate with nginx/monitoring
+- **Container names** use `${ENVIRONMENT}` suffix for multi-environment support
+- **Network aliases** allow simple service-to-service communication (e.g., frontend → `backend`)
+
+**Container-to-Container Communication Pattern**:
+
+If your frontend needs to proxy requests to the backend (e.g., nginx reverse proxy):
+- Use the **service name** directly in nginx config: `proxy_pass http://backend:3000`
+- Docker's internal DNS resolves service names within the same compose project
+- NO environment variables or runtime substitution needed
+- This is the Docker Compose best practice (see filter-ical for reference)
+
+Example frontend nginx config:
+```nginx
+location /api/ {
+    proxy_pass http://backend:3000/api/;  # Service name, NOT container name
+    # Docker resolves 'backend' to the correct container automatically
+}
+```
 
 ### Step 3: Create Environment Files
 
 Create production environment file:
 
 ```bash
-vim /deploy/apps/task-manager/.env.production
+vim /deploy/configs/task-manager/.env.production
 ```
 
 ```bash
@@ -251,7 +274,7 @@ API_URL=https://tasks.mycompany.com
 Create staging environment file:
 
 ```bash
-vim /deploy/apps/task-manager/.env.staging
+vim /deploy/configs/task-manager/.env.staging
 ```
 
 ```bash
@@ -493,6 +516,50 @@ docker exec platform-nginx ls -la /etc/letsencrypt/live/
 
 # Re-obtain certificate (see Step 6)
 ```
+
+### Issue: Frontend health check failing / Frontend can't reach backend
+
+**Symptoms**: Frontend container starts but health checks timeout, or frontend gets 502/504 when calling backend.
+
+**Root Cause**: Usually misconfigured service name resolution in frontend nginx config.
+
+**Solution**:
+1. Check frontend nginx config uses SERVICE NAME (not container name or env variable):
+   ```nginx
+   # ✓ CORRECT
+   proxy_pass http://backend:3000;
+
+   # ✗ WRONG - using container name
+   proxy_pass http://task-manager-backend-staging:3000;
+
+   # ✗ WRONG - using environment variable (adds complexity)
+   proxy_pass http://${BACKEND_HOST}:3000;
+   ```
+
+2. Verify service name matches docker-compose.yml:
+   ```bash
+   # Check service definition
+   cat configs/task-manager/docker-compose.yml | grep -A 3 "services:"
+   ```
+
+3. Test DNS resolution from frontend container:
+   ```bash
+   # Enter frontend container
+   docker exec -it task-manager-frontend sh
+
+   # Test if 'backend' resolves
+   ping backend  # Should resolve to backend container IP
+   curl http://backend:3000/health  # Should connect
+   ```
+
+4. Verify both containers are on same network:
+   ```bash
+   docker inspect task-manager-frontend | grep -A 10 "Networks"
+   docker inspect task-manager-backend | grep -A 10 "Networks"
+   # Both should show "platform" network
+   ```
+
+**Prevention**: Always use Docker Compose service names for container-to-container communication. Never use environment variables or container names.
 
 ## 📚 Next Steps
 
