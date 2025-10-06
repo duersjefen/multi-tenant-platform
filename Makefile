@@ -129,13 +129,7 @@ deploy-all: ## Deploy entire platform (nginx, monitoring, certbot)
 .PHONY: deploy-quick
 deploy-quick: ## Quick deployment: pull changes and reload nginx (zero-downtime)
 	@echo "$(YELLOW)Quick deployment (pull + reload nginx)...$(NC)"
-	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) << 'EOF'
-		cd $(REMOTE_PATH)
-		git pull origin main
-		docker exec platform-nginx nginx -t && \
-		docker exec platform-nginx nginx -s reload && \
-		echo "$(GREEN)✅ Nginx reloaded successfully$(NC)"
-	EOF
+	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) "cd $(REMOTE_PATH) && git pull origin main && docker exec platform-nginx nginx -t && docker exec platform-nginx nginx -s reload && echo '$(GREEN)✅ Nginx reloaded successfully$(NC)'"
 
 # =============================================================================
 # PROJECT DEPLOYMENT (Platform-Driven)
@@ -146,34 +140,14 @@ deploy: ## Deploy project (usage: make deploy project=filter-ical env=staging)
 	@test -n "$(project)" || (echo "$(RED)❌ Missing project=<name>$(NC)"; echo "Usage: make deploy project=filter-ical env=staging"; exit 1)
 	@test -n "$(env)" || (echo "$(RED)❌ Missing env=<staging|production>$(NC)"; exit 1)
 	@echo "$(YELLOW)🚀 Deploying $(project) to $(env)...$(NC)"
-	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) bash -s $(project) $(env) << 'EOF'
-		set -e
-		PROJECT="$$1"
-		ENVIRONMENT="$$2"
-		cd /opt/multi-tenant-platform
-		echo "📥 Pulling latest platform configs..."
-		git pull origin main
-		echo "🚀 Running deployment..."
-		PLATFORM_ROOT=/opt/multi-tenant-platform ENVIRONMENT=$$ENVIRONMENT ./lib/deploy.sh $$PROJECT $$ENVIRONMENT
-		echo "✅ Deployment complete"
-	EOF
+	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) "cd /opt/multi-tenant-platform && git pull origin main && PLATFORM_ROOT=/opt/multi-tenant-platform ENVIRONMENT=$(env) ./lib/deploy.sh $(project) $(env)"
 
 .PHONY: redeploy
 redeploy: ## Redeploy with current configs (usage: make redeploy project=filter-ical env=staging)
 	@test -n "$(project)" || (echo "$(RED)❌ Missing project=<name>$(NC)"; exit 1)
 	@test -n "$(env)" || (echo "$(RED)❌ Missing env=<staging|production>$(NC)"; exit 1)
 	@echo "$(YELLOW)🔄 Redeploying $(project) $(env) with current configs...$(NC)"
-	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) << 'EOF'
-		set -e
-		cd $(REMOTE_PATH)
-		echo "$(YELLOW)📥 Pulling latest images...$(NC)"
-		cd configs/$(project)
-		ENVIRONMENT=$(env) docker-compose pull
-		cd $(REMOTE_PATH)
-		echo "$(YELLOW)🚀 Deploying...$(NC)"
-		PLATFORM_ROOT=$(REMOTE_PATH) ENVIRONMENT=$(env) ./lib/deploy.sh $(project) $(env)
-		echo "$(GREEN)✅ Redeployment complete$(NC)"
-	EOF
+	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) "cd $(REMOTE_PATH) && cd configs/$(project) && ENVIRONMENT=$(env) docker-compose pull && cd $(REMOTE_PATH) && PLATFORM_ROOT=$(REMOTE_PATH) ENVIRONMENT=$(env) ./lib/deploy.sh $(project) $(env)"
 
 .PHONY: trigger-deploy
 trigger-deploy: ## Trigger deployment via GitHub Actions (usage: make trigger-deploy project=filter-ical env=staging)
@@ -229,7 +203,7 @@ deployment-status: ## Show deployment status for project (usage: make deployment
 .PHONY: rollback-nginx
 rollback-nginx: ## Rollback nginx to previous version
 	@echo "$(RED)Rolling back nginx...$(NC)"
-	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) << 'EOF'
+	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) <<-'ENDSSH'
 		cd $(REMOTE_PATH)
 		# Find latest backup
 		BACKUP=$$(docker images --format "{{.Repository}}:{{.Tag}}" | grep platform-nginx-backup | head -1)
@@ -254,7 +228,7 @@ rollback-nginx: ## Rollback nginx to previous version
 			-v platform-nginx-logs:/var/log/nginx \
 			$$BACKUP
 		echo "$(GREEN)✅ Nginx rolled back successfully$(NC)"
-	EOF
+	ENDSSH
 
 .PHONY: list-backups
 list-backups: ## List available nginx backup images
@@ -287,10 +261,7 @@ status: ## Show status of all platform containers
 .PHONY: health
 health: ## Check health of all platform services
 	@echo "$(YELLOW)Platform health check:$(NC)"
-	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) << 'EOF'
-		docker inspect platform-nginx platform-prometheus platform-grafana \
-			--format='{{.Name}}: {{if .State.Health}}{{.State.Health.Status}}{{else}}no healthcheck{{end}}'
-	EOF
+	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) "docker inspect platform-nginx platform-prometheus platform-grafana --format='{{.Name}}: {{if .State.Health}}{{.State.Health.Status}}{{else}}no healthcheck{{end}}'"
 
 # =============================================================================
 # SSH & REMOTE ACCESS
@@ -348,13 +319,7 @@ git-pull: ## Pull latest changes on production server
 .PHONY: cleanup-images
 cleanup-images: ## Clean up old Docker images (keep latest 3 backups)
 	@echo "$(YELLOW)Cleaning up old backup images...$(NC)"
-	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) << 'EOF'
-		docker images --format "{{.Repository}}:{{.Tag}}" | \
-			grep platform-nginx-backup | \
-			tail -n +4 | \
-			xargs -r docker rmi
-		echo "$(GREEN)✅ Cleanup complete$(NC)"
-	EOF
+	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) "docker images --format '{{.Repository}}:{{.Tag}}' | grep platform-nginx-backup | tail -n +4 | xargs -r docker rmi && echo '$(GREEN)✅ Cleanup complete$(NC)'"
 
 .PHONY: restart-nginx
 restart-nginx: ## Restart nginx container (brief downtime)
