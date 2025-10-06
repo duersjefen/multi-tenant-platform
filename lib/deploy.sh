@@ -108,9 +108,9 @@ deploy() {
     echo "📋 STEP 1: PRE-FLIGHT VALIDATION"
     echo "======================================================================"
 
-    if ! validate_disk_space 5; then
+    if ! validate_all "$PROJECT_NAME" "$ENVIRONMENT" "$PLATFORM_ROOT"; then
         if [ "$FORCE_DEPLOY" = false ]; then
-            notify_deployment_failure "$PROJECT_NAME" "$ENVIRONMENT" "Insufficient disk space"
+            notify_deployment_failure "$PROJECT_NAME" "$ENVIRONMENT" "Pre-flight validation failed"
             exit 1
         fi
         echo -e "${YELLOW}⚠️  Validation failed but continuing due to --force${NC}"

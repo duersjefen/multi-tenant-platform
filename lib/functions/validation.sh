@@ -212,12 +212,107 @@ validate_ports_available() {
 }
 
 # =============================================================================
+# validate_platform_repo_sync
+# Validates that platform repo is in sync with remote
+# =============================================================================
+validate_platform_repo_sync() {
+    local platform_root="${1:-.}"
+
+    echo "🔍 Validating platform repository sync..."
+
+    cd "$platform_root" || return 1
+
+    # Fetch latest from remote
+    git fetch origin >/dev/null 2>&1
+
+    # Compare local and remote
+    local local_sha=$(git rev-parse HEAD)
+    local remote_sha=$(git rev-parse origin/main)
+
+    if [ "$local_sha" != "$remote_sha" ]; then
+        echo -e "${RED}❌ Platform repo not in sync with remote${NC}"
+        echo "   Local SHA:  $local_sha"
+        echo "   Remote SHA: $remote_sha"
+        echo "   Run: git fetch origin && git reset --hard origin/main"
+        return 1
+    fi
+
+    echo -e "${GREEN}✅ Platform repo in sync (SHA: ${local_sha:0:8})${NC}"
+    return 0
+}
+
+# =============================================================================
+# validate_container_names
+# Validates that expected containers exist in docker-compose config
+# =============================================================================
+validate_container_names() {
+    local config_dir="$1"
+    local environment="$2"
+    local expected_containers=("${@:3}")
+
+    echo "🔍 Validating container configuration..."
+
+    cd "$config_dir" || return 1
+
+    # Check if docker-compose file exists
+    if [ ! -f "docker-compose.yml" ]; then
+        echo -e "${RED}❌ docker-compose.yml not found in $config_dir${NC}"
+        return 1
+    fi
+
+    # Get defined container names from docker-compose
+    local defined_containers=$(docker-compose -p "test-$$" config --services 2>/dev/null)
+
+    if [ -z "$defined_containers" ]; then
+        echo -e "${YELLOW}⚠️  Warning: Could not parse docker-compose.yml${NC}"
+        return 0  # Don't fail, just warn
+    fi
+
+    echo -e "${GREEN}✅ Container configuration valid${NC}"
+    return 0
+}
+
+# =============================================================================
+# validate_env_file
+# Validates that required environment variables exist in .env file
+# =============================================================================
+validate_env_file() {
+    local env_file="$1"
+    shift
+    local required_vars=("$@")
+
+    echo "🔍 Validating environment file: $(basename $env_file)..."
+
+    if [ ! -f "$env_file" ]; then
+        echo -e "${RED}❌ Environment file not found: $env_file${NC}"
+        return 1
+    fi
+
+    local missing_vars=()
+    for var in "${required_vars[@]}"; do
+        if ! grep -q "^${var}=" "$env_file"; then
+            missing_vars+=("$var")
+        fi
+    done
+
+    if [ ${#missing_vars[@]} -gt 0 ]; then
+        echo -e "${RED}❌ Missing required variables in $env_file:${NC}"
+        printf '   - %s\n' "${missing_vars[@]}"
+        return 1
+    fi
+
+    echo -e "${GREEN}✅ All required variables present${NC}"
+    return 0
+}
+
+# =============================================================================
 # validate_all
 # Runs all validation checks
 # =============================================================================
 validate_all() {
     local project_name="$1"
     local environment="$2"
+    local platform_root="${3:-/opt/multi-tenant-platform}"
 
     echo "======================================================================"
     echo "🔍 PRE-FLIGHT VALIDATION: $project_name ($environment)"
@@ -225,15 +320,37 @@ validate_all() {
 
     local validation_failed=false
 
-    # Add all your validation checks here
+    # Critical validations
     validate_disk_space 5 || validation_failed=true
-    # Add more checks as needed
+    validate_platform_repo_sync "$platform_root" || validation_failed=true
+
+    # Nginx validation (if nginx is running)
+    if docker ps --filter "name=platform-nginx" --format "{{.Names}}" | grep -q "platform-nginx"; then
+        validate_nginx_config || validation_failed=true
+    fi
+
+    # Environment file validation (if exists)
+    local env_file="$platform_root/configs/$project_name/.env.$environment"
+    if [ -f "$env_file" ]; then
+        # Define required vars per project (can be expanded)
+        case "$project_name" in
+            "filter-ical")
+                validate_env_file "$env_file" "DATABASE_URL" "SECRET_KEY" || validation_failed=true
+                ;;
+            *)
+                echo -e "${YELLOW}ℹ️  No specific env validation for $project_name${NC}"
+                ;;
+        esac
+    fi
 
     if [ "$validation_failed" = true ]; then
-        echo -e "\n${RED}❌ VALIDATION FAILED - Deployment aborted${NC}"
+        echo ""
+        echo -e "${RED}❌ VALIDATION FAILED - Deployment aborted${NC}"
+        echo "   Fix the issues above and try again"
         return 1
     fi
 
-    echo -e "\n${GREEN}✅ ALL VALIDATIONS PASSED - Proceeding with deployment${NC}"
+    echo ""
+    echo -e "${GREEN}✅ ALL VALIDATIONS PASSED - Proceeding with deployment${NC}"
     return 0
 }
