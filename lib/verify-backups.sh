@@ -126,12 +126,15 @@ PYTHON
 
     echo "  Test database: $TEST_DB"
 
-    # Step 1: Create test database
+    # Step 1: Create test database (use admin user for database creation)
     echo "  📝 Creating test database..."
-    if ! docker exec "$DB_CONTAINER" psql -U "$DB_USER" -c "CREATE DATABASE ${TEST_DB};" postgres 2>&1; then
+    if ! docker exec "$DB_CONTAINER" psql -U admin -c "CREATE DATABASE ${TEST_DB};" postgres 2>&1; then
         echo -e "${RED}❌ Failed to create test database${NC}"
         return 1
     fi
+
+    # Grant permissions to DB_USER
+    docker exec "$DB_CONTAINER" psql -U admin -c "GRANT ALL PRIVILEGES ON DATABASE ${TEST_DB} TO ${DB_USER};" postgres 2>&1 || true
 
     # Step 2: Restore backup to test database
     echo "  📥 Restoring backup to test database..."
@@ -155,9 +158,9 @@ PYTHON
     echo "  Tables: $table_count"
     echo "  Rows: ${row_count:-0}"
 
-    # Step 4: Cleanup test database
+    # Step 4: Cleanup test database (use admin user for database deletion)
     echo "  🗑️  Cleaning up test database..."
-    docker exec "$DB_CONTAINER" psql -U "$DB_USER" -c "DROP DATABASE ${TEST_DB};" postgres >/dev/null 2>&1
+    docker exec "$DB_CONTAINER" psql -U admin -c "DROP DATABASE ${TEST_DB};" postgres >/dev/null 2>&1
 
     # Verification passed
     echo -e "${GREEN}✅ Backup verified successfully${NC}"
