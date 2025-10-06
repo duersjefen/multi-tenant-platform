@@ -135,6 +135,8 @@ PYTHON
 
     # Grant permissions to DB_USER
     docker exec "$DB_CONTAINER" psql -U admin -c "GRANT ALL PRIVILEGES ON DATABASE ${TEST_DB} TO ${DB_USER};" postgres 2>&1 || true
+    docker exec "$DB_CONTAINER" psql -U admin -d "$TEST_DB" -c "GRANT ALL ON SCHEMA public TO ${DB_USER};" 2>&1 || true
+    docker exec "$DB_CONTAINER" psql -U admin -d "$TEST_DB" -c "GRANT CREATE ON SCHEMA public TO ${DB_USER};" 2>&1 || true
 
     # Step 2: Restore backup to test database
     echo "  📥 Restoring backup to test database..."
