@@ -32,6 +32,7 @@ source "$SCRIPT_DIR/functions/validation.sh"
 source "$SCRIPT_DIR/functions/notifications.sh"
 source "$SCRIPT_DIR/functions/backup.sh"
 source "$SCRIPT_DIR/functions/blue-green.sh"
+source "$SCRIPT_DIR/functions/manifest.sh"
 
 # =============================================================================
 # Parse arguments
@@ -117,18 +118,22 @@ deploy() {
     fi
 
     # Step 2: Create backup
+    local backup_name="none"
     if [ "$SKIP_BACKUP" = false ]; then
         echo ""
         echo "======================================================================"
         echo "📋 STEP 2: CREATE BACKUP"
         echo "======================================================================"
 
-        if ! create_backup "$PROJECT_NAME" "$ENVIRONMENT"; then
+        if backup_name=$(create_backup "$PROJECT_NAME" "$ENVIRONMENT"); then
+            echo "📝 Backup created: $backup_name"
+        else
             if [ "$FORCE_DEPLOY" = false ]; then
                 notify_deployment_failure "$PROJECT_NAME" "$ENVIRONMENT" "Backup creation failed"
                 exit 1
             fi
             echo -e "${YELLOW}⚠️  Backup failed but continuing due to --force${NC}"
+            backup_name="none"
         fi
     else
         echo ""
@@ -308,6 +313,18 @@ deploy() {
     local end_time
     end_time=$(date +%s)
     local duration=$((end_time - start_time))
+
+    # Get git SHA from platform repo
+    local git_sha
+    git_sha=$(cd "$PLATFORM_ROOT" && git rev-parse HEAD 2>/dev/null || echo "unknown")
+
+    # Step 8: Save deployment manifest
+    echo ""
+    echo "======================================================================"
+    echo "📋 STEP 8: SAVE DEPLOYMENT MANIFEST"
+    echo "======================================================================"
+
+    save_deployment_manifest "$PROJECT_NAME" "$ENVIRONMENT" "$backup_name" "$git_sha"
 
     # Success!
     echo ""
