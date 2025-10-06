@@ -230,8 +230,20 @@ deploy() {
             notify_deployment_failure "$PROJECT_NAME" "$ENVIRONMENT" "Health check failed: $container_name"
 
             # Auto-rollback if backup exists
-            echo -e "${YELLOW}🔄 Attempting automatic rollback...${NC}"
-            restore_backup "$PROJECT_NAME" "$ENVIRONMENT" "latest"
+            local latest_backup
+            if latest_backup=$(get_latest_backup "$PROJECT_NAME" "$ENVIRONMENT"); then
+                echo -e "${YELLOW}🔄 Attempting automatic rollback to: $latest_backup${NC}"
+                if restore_backup "$PROJECT_NAME" "$ENVIRONMENT" "$latest_backup"; then
+                    echo -e "${GREEN}✅ Rollback successful${NC}"
+                    notify_deployment_failure "$PROJECT_NAME" "$ENVIRONMENT" "Health check failed - rolled back to $latest_backup"
+                else
+                    echo -e "${RED}❌ Rollback failed${NC}"
+                    notify_deployment_failure "$PROJECT_NAME" "$ENVIRONMENT" "Health check failed AND rollback failed"
+                fi
+            else
+                echo -e "${YELLOW}⚠️  No backup available for rollback${NC}"
+                notify_deployment_failure "$PROJECT_NAME" "$ENVIRONMENT" "Health check failed - no backup available"
+            fi
 
             exit 1
         fi
@@ -248,8 +260,20 @@ deploy() {
         notify_deployment_failure "$PROJECT_NAME" "$ENVIRONMENT" "Smoke tests failed"
 
         # Auto-rollback if backup exists
-        echo -e "${YELLOW}🔄 Attempting automatic rollback...${NC}"
-        restore_backup "$PROJECT_NAME" "$ENVIRONMENT" "latest"
+        local latest_backup
+        if latest_backup=$(get_latest_backup "$PROJECT_NAME" "$ENVIRONMENT"); then
+            echo -e "${YELLOW}🔄 Attempting automatic rollback to: $latest_backup${NC}"
+            if restore_backup "$PROJECT_NAME" "$ENVIRONMENT" "$latest_backup"; then
+                echo -e "${GREEN}✅ Rollback successful${NC}"
+                notify_deployment_failure "$PROJECT_NAME" "$ENVIRONMENT" "Smoke tests failed - rolled back to $latest_backup"
+            else
+                echo -e "${RED}❌ Rollback failed${NC}"
+                notify_deployment_failure "$PROJECT_NAME" "$ENVIRONMENT" "Smoke tests failed AND rollback failed"
+            fi
+        else
+            echo -e "${YELLOW}⚠️  No backup available for rollback${NC}"
+            notify_deployment_failure "$PROJECT_NAME" "$ENVIRONMENT" "Smoke tests failed - no backup available"
+        fi
 
         exit 1
     fi

@@ -136,7 +136,17 @@ restore_backup() {
 
     # Restore Docker images
     echo "📦 Restoring Docker images..."
-    # Docker images are already tagged, just need to reference them
+
+    # Find all backup-tagged images for this backup and retag them
+    for backup_image in $(docker images --format "{{.Repository}}:{{.Tag}}" | grep ":${backup_name}$"); do
+        # Strip backup tag to get original image name
+        local original_image="${backup_image%:${backup_name}}"
+        original_image="${original_image}:latest"
+
+        # Retag backup image as original
+        docker tag "$backup_image" "$original_image"
+        echo "  Restored image: $backup_image → $original_image"
+    done
 
     # Restore volumes (only for this specific backup)
     echo "💾 Restoring volumes..."
@@ -167,10 +177,8 @@ restore_backup() {
         echo "  Restored configuration from $backup_name"
     fi
 
-    # Restart containers with restored images (using backup-tagged images)
+    # Restart containers with restored images
     echo "🚀 Starting containers from backup..."
-    # TODO: Update docker-compose to use backup-tagged images
-    # For now, just bring up with current config
     docker-compose -p "$COMPOSE_PROJECT" up -d
 
     echo -e "${GREEN}✅ Backup restored: $backup_name${NC}"
