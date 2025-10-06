@@ -159,6 +159,11 @@ trigger-deploy: ## Trigger deployment via GitHub Actions (usage: make trigger-de
 		-f environment=$(env) \
 		--repo duersjefen/multi-tenant-platform
 	@echo "$(GREEN)✅ Workflow triggered$(NC)"
+	@if [ "$(env)" = "staging" ]; then \
+		echo ""; \
+		echo "$(YELLOW)ℹ️  Staging deployment will auto-queue production (requires approval)$(NC)"; \
+		echo "$(YELLOW)Approve with: make approve-production project=$(project)$(NC)"; \
+	fi
 	@echo "$(YELLOW)👀 Monitor at: https://github.com/duersjefen/multi-tenant-platform/actions$(NC)"
 
 .PHONY: promote
@@ -168,7 +173,8 @@ promote: ## Promote staging config to production (usage: make promote project=fi
 	@echo ""
 	@echo "This will:"
 	@echo "  1. Copy staging env vars → production env vars"
-	@echo "  2. Commit and push (triggers auto-deploy to production)"
+	@echo "  2. Commit and push (triggers staging deploy)"
+	@echo "  3. Production deployment auto-queues (requires approval)"
 	@echo ""
 	@read -p "Continue? [y/N] " confirm; \
 	if [ "$$confirm" != "y" ] && [ "$$confirm" != "Y" ]; then \
@@ -185,8 +191,34 @@ promote: ## Promote staging config to production (usage: make promote project=fi
 	@git commit -m "Promote $(project): staging → production" || (echo "$(YELLOW)No changes to commit$(NC)"; exit 0)
 	@git push origin main
 	@echo "$(GREEN)✅ Promotion committed$(NC)"
-	@echo "$(YELLOW)👀 GitHub Actions will deploy to production (requires approval)$(NC)"
-	@echo "$(YELLOW)Monitor at: https://github.com/duersjefen/multi-tenant-platform/actions$(NC)"
+	@echo ""
+	@echo "$(YELLOW)🔄 Continuous deployment pipeline starting...$(NC)"
+	@echo "  1. Deploy to staging ✅"
+	@echo "  2. Auto-queue production ⏸️  (waiting for approval)"
+	@echo ""
+	@echo "$(YELLOW)Approve with: make approve-production project=$(project)$(NC)"
+	@echo "$(YELLOW)Or monitor at: https://github.com/duersjefen/multi-tenant-platform/actions$(NC)"
+
+.PHONY: approve-production
+approve-production: ## Approve pending production deployment (usage: make approve-production project=filter-ical)
+	@test -n "$(project)" || (echo "$(RED)❌ Missing project=<name>$(NC)"; exit 1)
+	@echo "$(YELLOW)🔍 Looking for pending production deployments for $(project)...$(NC)"
+	@echo ""
+	@gh run list --repo duersjefen/multi-tenant-platform \
+		--workflow "Deploy Project" \
+		--status waiting \
+		--limit 10 \
+		--json databaseId,displayTitle,createdAt,url \
+		--jq '.[] | "\(.databaseId)\t\(.displayTitle)\t\(.createdAt)"' | \
+		grep -i "$(project)" | head -5 || (echo "$(YELLOW)No pending deployments found for $(project)$(NC)"; exit 1)
+	@echo ""
+	@read -p "Enter run ID to approve (or 'q' to quit): " run_id; \
+	if [ "$$run_id" = "q" ]; then \
+		echo "$(YELLOW)Cancelled$(NC)"; \
+		exit 0; \
+	fi; \
+	echo "$(YELLOW)Watching deployment $$run_id (will prompt for approval)...$(NC)"; \
+	gh run watch $$run_id --repo duersjefen/multi-tenant-platform
 
 .PHONY: deployment-status
 deployment-status: ## Show deployment status for project (usage: make deployment-status project=filter-ical env=staging)

@@ -12,6 +12,9 @@
 #   - Platform repo is source of truth for deployment configuration
 #   - App repos build images and notify platform
 #   - Platform decides when and how to deploy
+#
+# Continuous Deployment Flow:
+#   Push/Config → Deploy Staging → Auto-Queue Production → [Approve] → Deploy
 # =============================================================================
 
 name: Deploy Project
@@ -72,21 +75,30 @@ jobs:
           echo "Event: ${{ github.event_name }}"
 
           if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            # New image built - deploy that project to staging first
+            # New image built - deploy to staging (production auto-queues after)
             PROJECT="${{ github.event.client_payload.project }}"
             echo "projects=[\"$PROJECT\"]" >> $GITHUB_OUTPUT
             echo "deploy_staging=true" >> $GITHUB_OUTPUT
             echo "deploy_production=false" >> $GITHUB_OUTPUT
-            echo "📦 New image built for: $PROJECT"
+            echo "📦 New image built for: $PROJECT (staging → auto-queue production)"
 
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            # Manual trigger
+            # Manual trigger - respect requested environment
             PROJECT="${{ inputs.project }}"
             ENV="${{ inputs.environment }}"
             echo "projects=[\"$PROJECT\"]" >> $GITHUB_OUTPUT
-            echo "deploy_staging=$([ "$ENV" = "staging" ] && echo true || echo false)" >> $GITHUB_OUTPUT
-            echo "deploy_production=$([ "$ENV" = "production" ] && echo true || echo false)" >> $GITHUB_OUTPUT
-            echo "🎯 Manual deployment: $PROJECT → $ENV"
+
+            if [ "$ENV" = "production" ]; then
+              # Direct production deployment (emergency override)
+              echo "deploy_staging=false" >> $GITHUB_OUTPUT
+              echo "deploy_production=true" >> $GITHUB_OUTPUT
+              echo "🎯 Manual production deployment (emergency): $PROJECT"
+            else
+              # Staging deployment (production auto-queues after)
+              echo "deploy_staging=true" >> $GITHUB_OUTPUT
+              echo "deploy_production=false" >> $GITHUB_OUTPUT
+              echo "🎯 Manual staging deployment: $PROJECT (production auto-queues after)"
+            fi
 
           else
             # Config changes - detect which projects affected
@@ -110,7 +122,7 @@ jobs:
               echo "projects=$PROJECTS" >> $GITHUB_OUTPUT
               echo "deploy_staging=true" >> $GITHUB_OUTPUT
               echo "deploy_production=false" >> $GITHUB_OUTPUT
-              echo "🔧 Config changed for: $PROJECTS"
+              echo "🔧 Config changed for: $PROJECTS (staging → auto-queue production)"
             fi
           fi
 
@@ -202,15 +214,27 @@ jobs:
           echo "✅ Staging deployment successful!"
           echo "🌐 URL: https://staging.${{ matrix.project }}.de"
           echo "📝 Commit: ${{ github.sha }}"
+          echo ""
+          echo "🚀 Production deployment will auto-queue (requires approval)"
+          echo "👀 Monitor at: https://github.com/duersjefen/multi-tenant-platform/actions"
 
   # =============================================================================
-  # Deploy to Production (requires manual approval)
+  # Deploy to Production (auto-queued after staging, requires manual approval)
   # =============================================================================
   deploy-production:
     name: Deploy to Production
-    needs: detect-changes
-    if: needs.detect-changes.outputs.deploy_production == 'true' && needs.detect-changes.outputs.projects != '[]'
+    needs: [detect-changes, deploy-staging]
+    # Run if: staging succeeded OR manual production deployment requested
+    if: |
+      always() &&
+      (needs.deploy-staging.result == 'success' || needs.detect-changes.outputs.deploy_production == 'true') &&
+      needs.detect-changes.outputs.projects != '[]'
     runs-on: ubuntu-latest
+
+    # Auto-cancel old pending production deployments for same project
+    concurrency:
+      group: production-${{ matrix.project }}
+      cancel-in-progress: false  # Don't cancel running deploys, only pending
 
     strategy:
       matrix:
@@ -280,3 +304,7 @@ jobs:
         run: |
           echo "✅ Production deployment successful!"
           echo "🌐 URL: https://${{ matrix.project }}.de"
+          echo "📝 Commit: ${{ github.sha }}"
+          echo ""
+          echo "🎉 Complete deployment pipeline finished!"
+          echo "   Staging ✅ → Production ✅"

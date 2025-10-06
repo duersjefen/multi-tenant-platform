@@ -21,7 +21,11 @@ Application Repos (Passive)          Platform Repo (Active Orchestrator)
 
 ---
 
-## 📋 How It Works
+## 📋 How It Works - Continuous Deployment Pipeline
+
+### 🎯 **Core Concept: Staging → Auto-Queue Production → Approve → Deploy**
+
+Every change flows through the same continuous pipeline with a manual approval gate before production.
 
 ### 1. Application Code Changes
 
@@ -36,8 +40,11 @@ git push origin main
 1. GitHub Actions builds Docker images
 2. Images pushed to ghcr.io
 3. **Platform repo notified** via repository_dispatch
-4. Platform deploys to staging automatically
-5. Production requires manual approval
+4. Platform deploys to **staging** automatically ✅
+5. Production deployment **auto-queues** ⏸️
+6. Click "Approve" in GitHub → deploys to **production** ✅
+
+**Complete pipeline:** `Push → Build → Staging ✅ → [Approve] → Production ✅`
 
 ### 2. Configuration Changes
 
@@ -51,52 +58,78 @@ git push origin main
 
 **What happens:**
 1. GitHub Actions detects config change
-2. Platform redeploys affected projects to staging
-3. Production requires manual approval
+2. Platform redeploys affected projects to **staging** ✅
+3. Production deployment **auto-queues** ⏸️
+4. Click "Approve" in GitHub → deploys to **production** ✅
 
-### 3. Manual Deployment
+**Complete pipeline:** `Config Change → Staging ✅ → [Approve] → Production ✅`
 
-**Force a deployment:**
+### 3. Manual Deployment (Emergency Override)
+
+**Force immediate deployment (skips auto-queue):**
 ```bash
 cd multi-tenant-platform
-make deploy project=filter-ical env=staging
+make deploy project=filter-ical env=production
 ```
+
+**Use case:** Emergency hotfixes that need immediate production deployment
 
 ---
 
 ## 🚀 Deployment Commands
 
-### Via Makefile (Recommended)
+### Primary Commands (Normal Workflow)
 
 ```bash
-# Deploy project to environment
-make deploy project=filter-ical env=staging
+# 1. Push code (triggers continuous deployment)
+cd filter-ical
+git push origin main
+# → Automatically deploys to staging
+# → Auto-queues production (requires approval)
 
-# Redeploy with current configs (fast)
-make redeploy project=filter-ical env=staging
-
-# Trigger via GitHub Actions
-make trigger-deploy project=filter-ical env=staging
-
-# Promote staging → production
-make promote project=filter-ical
+# 2. Approve production deployment
+cd multi-tenant-platform
+make approve-production project=filter-ical
+# → Interactively lists pending deployments
+# → Prompts for approval
 
 # Check deployment status
 make deployment-status project=filter-ical env=staging
+make deployment-status project=filter-ical env=production
 ```
 
-### Via GitHub Actions
+### Alternative Commands (Manual Control)
 
 ```bash
-# Trigger deployment
-gh workflow run deploy-project.yml \
-  -f project=filter-ical \
-  -f environment=staging \
-  --repo duersjefen/multi-tenant-platform
+# Force immediate staging deployment (bypasses git push)
+make deploy project=filter-ical env=staging
+# → Deploys to staging
+# → Auto-queues production
 
-# Monitor
-gh run list --repo duersjefen/multi-tenant-platform
+# Force immediate production deployment (EMERGENCY ONLY)
+make deploy project=filter-ical env=production
+# → Bypasses approval gate
+# → Deploys directly to production
+
+# Trigger via GitHub Actions (same as manual deploy)
+make trigger-deploy project=filter-ical env=staging
+# → Deploys via workflow
+# → Auto-queues production
+
+# Promote staging config to production
+make promote project=filter-ical
+# → Copies .env.staging → .env.production
+# → Commits and pushes
+# → Triggers continuous deployment pipeline
 ```
+
+### Via GitHub UI (Simplest for Approval)
+
+1. Visit: https://github.com/duersjefen/multi-tenant-platform/actions
+2. Click on "Deploy Project" workflow run
+3. Click "Review deployments"
+4. Approve "production" environment
+5. Watch deployment complete
 
 ---
 
@@ -114,15 +147,24 @@ git add .
 git commit -m "Add new API endpoint"
 git push origin main
 
-# 3. Automatic pipeline:
+# 3. Automatic pipeline starts:
 #    ✅ Build images (filter-ical repo)
 #    ✅ Notify platform (repository_dispatch)
 #    ✅ Deploy to staging (platform repo)
-#    ⏸️  Production (requires approval)
+#    ⏸️  Production auto-queued (waiting for approval)
 
-# 4. Approve production (if staging looks good)
+# 4. Test staging
+curl https://staging.filter-ical.de
+
+# 5. Approve production (if staging looks good)
 cd ~/Desktop/multi-tenant-platform
-make promote project=filter-ical
+make approve-production project=filter-ical
+# → Lists pending deployments
+# → Enter run ID to approve
+# → Watches deployment complete
+
+# 6. Verify production
+curl https://filter-ical.de
 ```
 
 ### Scenario 2: Deploy Config Change
@@ -140,7 +182,10 @@ git push origin main
 # 3. Automatic pipeline:
 #    ✅ Detect config change (platform repo)
 #    ✅ Deploy to staging
-#    ⏸️  Production (requires approval)
+#    ⏸️  Production auto-queued (waiting for approval)
+
+# 4. Approve when ready
+make approve-production project=filter-ical
 ```
 
 ### Scenario 3: Emergency Rollback
@@ -368,30 +413,29 @@ healthcheck:
 
 ---
 
-## 🔄 Migration from Old System
+## 🔄 Continuous Deployment Benefits
 
-### Old Way (filter-ical controls deployment):
-```bash
-cd filter-ical
-make deploy-staging  # Deploys from app repo
+### Compared to Manual Promotion:
+
+**Old Manual Flow:**
 ```
-
-### New Way (platform controls deployment):
-```bash
-cd filter-ical
-git push origin main  # Platform deploys automatically
-
-# OR manual:
-cd multi-tenant-platform
-make deploy project=filter-ical env=staging
+Push → Staging ✅ → make promote → Staging ✅ → Approve → Production ✅
 ```
+*Requires 2 staging deployments, manual config copy, extra commits*
 
-### Coexistence Period
+**New Continuous Flow:**
+```
+Push → Staging ✅ → Approve → Production ✅
+```
+*Single staging deployment, instant approval, no extra commits*
 
-Both systems work during migration:
-- Old workflows still exist in filter-ical (will be deprecated)
-- New platform-driven system is now primary
-- Once stable, remove old filter-ical deployment workflows
+### Why This Is Better:
+
+1. **Faster**: No duplicate staging deployment
+2. **Simpler**: No manual config copying
+3. **Cleaner**: No "promote" commits cluttering history
+4. **Industry Standard**: How CI/CD should work
+5. **Better Visibility**: All deployments visible in GitHub Actions
 
 ---
 
@@ -419,10 +463,40 @@ Both systems work during migration:
 
 ---
 
+## 🔐 GitHub Environment Setup
+
+### Required for Approval Workflow
+
+The continuous deployment pipeline requires GitHub environments with protection rules.
+
+**Setup production environment:**
+
+1. Go to: https://github.com/duersjefen/multi-tenant-platform/settings/environments
+2. Click "New environment" → Name: `production`
+3. Enable "Required reviewers" → Add team members
+4. Save protection rules
+
+**Staging environment (optional):**
+- Can add for visibility but approval not required
+- Shows deployment URL in workflow runs
+
+### Environment Configuration
+
+```yaml
+# In .github/workflows/deploy-project.yml
+environment:
+  name: production  # Matches GitHub environment name
+  url: https://${{ matrix.project }}.de  # Shows in GitHub UI
+```
+
+When staging succeeds, production job auto-queues and waits for approval from configured reviewers.
+
+---
+
 ## 🚀 Future Enhancements
 
+- **Multiple Approvers:** Require 2+ approvals for production
+- **Deployment Windows:** Only allow deployments during business hours
 - **Canary Deployments:** Deploy to 10% of prod before full rollout
-- **Blue-Green Deployments:** Zero-downtime production switches
 - **Automated Rollback:** Auto-rollback on error rate increase
-- **Slack Notifications:** Notify team of deployments
-- **Deployment Dashboard:** Web UI for deployment status
+- **Slack Notifications:** Notify team of deployments and approvals
