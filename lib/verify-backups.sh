@@ -139,15 +139,16 @@ PYTHON
     # Step 2: Restore backup to test database
     echo "  📥 Restoring backup to test database..."
     # Copy backup into container and restore
-    if ! docker cp "$latest_backup" "$DB_CONTAINER":/tmp/verify.dump 2>&1 && \
-         docker exec "$DB_CONTAINER" \
+    docker cp "$latest_backup" "$DB_CONTAINER":/tmp/verify.dump 2>&1
+    if ! docker exec "$DB_CONTAINER" \
             pg_restore -U "$DB_USER" -d "$TEST_DB" \
-            --no-owner --no-acl /tmp/verify.dump 2>&1 | grep -v "NOTICE:" && \
-         docker exec "$DB_CONTAINER" rm /tmp/verify.dump 2>&1; then
+            --no-owner --no-acl /tmp/verify.dump 2>&1 | grep -v "NOTICE:"; then
         echo -e "${RED}❌ Failed to restore backup${NC}"
-        docker exec "$DB_CONTAINER" psql -U "$DB_USER" -c "DROP DATABASE IF EXISTS ${TEST_DB};" postgres >/dev/null 2>&1
+        docker exec "$DB_CONTAINER" rm /tmp/verify.dump 2>&1 || true
+        docker exec "$DB_CONTAINER" psql -U admin -c "DROP DATABASE IF EXISTS ${TEST_DB};" postgres >/dev/null 2>&1
         return 1
     fi
+    docker exec "$DB_CONTAINER" rm /tmp/verify.dump 2>&1 || true
 
     # Step 3: Verify data integrity
     echo "  🔍 Verifying data integrity..."
