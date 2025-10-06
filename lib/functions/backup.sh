@@ -304,7 +304,7 @@ PYTHON
 
     # Generate backup filename with timestamp
     local timestamp=$(date +%Y%m%d_%H%M%S)
-    local backup_file="${backup_dir}/db_${timestamp}.sql.gz"
+    local backup_file="${backup_dir}/db_${timestamp}.dump"
 
     echo "  Database: $DB_NAME"
     echo "  Container: $DB_CONTAINER"
@@ -316,11 +316,15 @@ PYTHON
     fi
 
     # Perform database backup using pg_dump
+    # Custom format is already compressed, no need for extra gzip
     if docker exec "$DB_CONTAINER" \
         pg_dump -U "$DB_USER" "$DB_NAME" \
         --format=custom \
         --compress=9 \
-        --verbose 2>&1 | gzip > "$backup_file"; then
+        --verbose \
+        --file=/tmp/backup.dump 2>&1 && \
+       docker cp "$DB_CONTAINER":/tmp/backup.dump "$backup_file" && \
+       docker exec "$DB_CONTAINER" rm /tmp/backup.dump; then
 
         echo -e "${GREEN}✅ Database backup created: $(basename "$backup_file")${NC}"
 
@@ -405,9 +409,12 @@ PYTHON
 
     # Restore database from backup
     echo "📥 Restoring database from backup..."
-    if zcat "$backup_file" | docker exec -i "$DB_CONTAINER" \
+    # Copy backup into container and restore
+    if docker cp "$backup_file" "$DB_CONTAINER":/tmp/restore.dump && \
+       docker exec "$DB_CONTAINER" \
         pg_restore -U "$DB_USER" -d "$DB_NAME" \
-        --verbose 2>&1; then
+        --verbose /tmp/restore.dump 2>&1 && \
+       docker exec "$DB_CONTAINER" rm /tmp/restore.dump; then
 
         echo -e "${GREEN}✅ Database restored successfully${NC}"
         return 0
@@ -434,7 +441,7 @@ cleanup_old_database_backups() {
     fi
 
     # Find and remove old database backups
-    find "$backup_dir" -name "db_*.sql.gz" -mtime +${retention_days} -print0 | while IFS= read -r -d '' backup_file; do
+    find "$backup_dir" -name "db_*.dump" -mtime +${retention_days} -print0 | while IFS= read -r -d '' backup_file; do
         echo "  Removing old backup: $(basename "$backup_file")"
         rm -f "$backup_file"
     done
