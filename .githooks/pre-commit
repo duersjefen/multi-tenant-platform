@@ -91,23 +91,27 @@ else
 fi
 
 # =============================================================================
-# Check 4: Warn if nginx configs modified directly
+# Check 4: Block manual nginx config edits (HARD BLOCK)
 # =============================================================================
 echo "📋 Checking if configs were hand-edited..."
 
 if git diff --cached --name-only | grep -q "platform/nginx/conf.d/.*\.conf"; then
-    echo -e "${YELLOW}⚠️  Warning: Nginx config files were modified directly${NC}"
+    echo -e "${RED}❌ BLOCKED: Nginx config files were modified directly${NC}"
     echo "   Modified files:"
     git diff --cached --name-only | grep "platform/nginx/conf.d/.*\.conf" | sed 's/^/   - /'
     echo ""
-    echo "   Recommendation: Edit config/projects.yml instead and regenerate:"
-    echo "   python3 lib/generate-nginx-configs.py"
+    echo "   ⛔ Manual edits to generated configs are not allowed"
+    echo "   These files are auto-generated from config/projects.yml"
     echo ""
-    read -p "   Continue anyway? (y/N) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
-    fi
+    echo "   To make changes:"
+    echo "   1. Edit config/projects.yml"
+    echo "   2. Run: python3 lib/generate-nginx-configs.py"
+    echo "   3. Commit both files together"
+    echo ""
+    echo "   To bypass this check (emergencies only):"
+    echo "   git commit --no-verify"
+    echo ""
+    exit 1
 fi
 
 # =============================================================================
