@@ -338,7 +338,7 @@ deploy() {
     echo "📋 STEP 8: SAVE DEPLOYMENT MANIFEST"
     echo "======================================================================"
 
-    save_deployment_manifest "$PROJECT_NAME" "$ENVIRONMENT" "$backup_name" "$git_sha"
+    save_deployment_manifest "$PROJECT_NAME" "$ENVIRONMENT" "$backup_name" "$git_sha" "$database_backup_file"
 
     # Success!
     echo ""

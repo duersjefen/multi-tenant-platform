@@ -22,6 +22,7 @@ save_deployment_manifest() {
     local environment="$2"
     local backup_name="${3:-none}"
     local git_sha="${4:-unknown}"
+    local database_backup_file="${5:-none}"
     local manifest_dir="/opt/deployments/${project_name}/${environment}"
     local manifest_file="${manifest_dir}/manifest.json"
 
@@ -58,6 +59,7 @@ save_deployment_manifest() {
   "deployed_by": "$(whoami)",
   "git_sha": "${git_sha}",
   "backup": "${backup_name}",
+  "database_backup": "${database_backup_file}",
   "images": ${images_json}
 }
 EOF
