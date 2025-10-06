@@ -138,6 +138,91 @@ deploy-quick: ## Quick deployment: pull changes and reload nginx (zero-downtime)
 	EOF
 
 # =============================================================================
+# PROJECT DEPLOYMENT (Platform-Driven)
+# =============================================================================
+
+.PHONY: deploy
+deploy: ## Deploy project (usage: make deploy project=filter-ical env=staging)
+	@test -n "$(project)" || (echo "$(RED)❌ Missing project=<name>$(NC)"; echo "Usage: make deploy project=filter-ical env=staging"; exit 1)
+	@test -n "$(env)" || (echo "$(RED)❌ Missing env=<staging|production>$(NC)"; exit 1)
+	@echo "$(YELLOW)🚀 Deploying $(project) to $(env)...$(NC)"
+	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) << 'EOF'
+		set -e
+		cd $(REMOTE_PATH)
+		echo "$(YELLOW)📥 Pulling latest platform configs...$(NC)"
+		git pull origin main
+		echo "$(YELLOW)🐳 Authenticating to GHCR...$(NC)"
+		echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u duersjefen --password-stdin || true
+		echo "$(YELLOW)🚀 Running deployment...$(NC)"
+		PLATFORM_ROOT=$(REMOTE_PATH) ENVIRONMENT=$(env) ./lib/deploy.sh $(project) $(env)
+		echo "$(GREEN)✅ Deployment complete$(NC)"
+	EOF
+
+.PHONY: redeploy
+redeploy: ## Redeploy with current configs (usage: make redeploy project=filter-ical env=staging)
+	@test -n "$(project)" || (echo "$(RED)❌ Missing project=<name>$(NC)"; exit 1)
+	@test -n "$(env)" || (echo "$(RED)❌ Missing env=<staging|production>$(NC)"; exit 1)
+	@echo "$(YELLOW)🔄 Redeploying $(project) $(env) with current configs...$(NC)"
+	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) << 'EOF'
+		set -e
+		cd $(REMOTE_PATH)
+		echo "$(YELLOW)📥 Pulling latest images...$(NC)"
+		cd configs/$(project)
+		ENVIRONMENT=$(env) docker-compose pull
+		cd $(REMOTE_PATH)
+		echo "$(YELLOW)🚀 Deploying...$(NC)"
+		PLATFORM_ROOT=$(REMOTE_PATH) ENVIRONMENT=$(env) ./lib/deploy.sh $(project) $(env)
+		echo "$(GREEN)✅ Redeployment complete$(NC)"
+	EOF
+
+.PHONY: trigger-deploy
+trigger-deploy: ## Trigger deployment via GitHub Actions (usage: make trigger-deploy project=filter-ical env=staging)
+	@test -n "$(project)" || (echo "$(RED)❌ Missing project=<name>$(NC)"; exit 1)
+	@test -n "$(env)" || (echo "$(RED)❌ Missing env=<staging|production>$(NC)"; exit 1)
+	@echo "$(YELLOW)🚀 Triggering deployment via GitHub Actions...$(NC)"
+	@gh workflow run deploy-project.yml \
+		-f project=$(project) \
+		-f environment=$(env) \
+		--repo duersjefen/multi-tenant-platform
+	@echo "$(GREEN)✅ Workflow triggered$(NC)"
+	@echo "$(YELLOW)👀 Monitor at: https://github.com/duersjefen/multi-tenant-platform/actions$(NC)"
+
+.PHONY: promote
+promote: ## Promote staging config to production (usage: make promote project=filter-ical)
+	@test -n "$(project)" || (echo "$(RED)❌ Missing project=<name>$(NC)"; exit 1)
+	@echo "$(YELLOW)📈 Promoting $(project) staging → production$(NC)"
+	@echo ""
+	@echo "This will:"
+	@echo "  1. Copy staging env vars → production env vars"
+	@echo "  2. Commit and push (triggers auto-deploy to production)"
+	@echo ""
+	@read -p "Continue? [y/N] " confirm; \
+	if [ "$$confirm" != "y" ] && [ "$$confirm" != "Y" ]; then \
+		echo "$(YELLOW)Cancelled$(NC)"; \
+		exit 0; \
+	fi
+	@if [ ! -f configs/$(project)/.env.staging ]; then \
+		echo "$(RED)❌ configs/$(project)/.env.staging not found$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(YELLOW)Copying staging config to production...$(NC)"
+	@cp configs/$(project)/.env.staging configs/$(project)/.env.production
+	@git add configs/$(project)/.env.production
+	@git commit -m "Promote $(project): staging → production" || (echo "$(YELLOW)No changes to commit$(NC)"; exit 0)
+	@git push origin main
+	@echo "$(GREEN)✅ Promotion committed$(NC)"
+	@echo "$(YELLOW)👀 GitHub Actions will deploy to production (requires approval)$(NC)"
+	@echo "$(YELLOW)Monitor at: https://github.com/duersjefen/multi-tenant-platform/actions$(NC)"
+
+.PHONY: deployment-status
+deployment-status: ## Show deployment status for project (usage: make deployment-status project=filter-ical env=staging)
+	@test -n "$(project)" || (echo "$(RED)❌ Missing project=<name>$(NC)"; exit 1)
+	@test -n "$(env)" || (echo "$(RED)❌ Missing env=<staging|production>$(NC)"; exit 1)
+	@echo "$(YELLOW)📊 Deployment status: $(project) ($(env))$(NC)"
+	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) \
+		"cd $(REMOTE_PATH) && ./lib/deployment-status.sh $(project) $(env)"
+
+# =============================================================================
 # ROLLBACK & RECOVERY
 # =============================================================================
 
