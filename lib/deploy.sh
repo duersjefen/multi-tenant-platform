@@ -237,6 +237,23 @@ deploy() {
         fi
     done
 
+    # Step 5.5: Smoke tests (BEFORE traffic switch)
+    echo ""
+    echo "======================================================================"
+    echo "📋 STEP 5.5: SMOKE TESTS (PRE-TRAFFIC SWITCH)"
+    echo "======================================================================"
+
+    if ! validate_smoke_tests "$PROJECT_NAME" "$ENVIRONMENT"; then
+        echo -e "${RED}❌ Smoke tests failed${NC}"
+        notify_deployment_failure "$PROJECT_NAME" "$ENVIRONMENT" "Smoke tests failed"
+
+        # Auto-rollback if backup exists
+        echo -e "${YELLOW}🔄 Attempting automatic rollback...${NC}"
+        restore_backup "$PROJECT_NAME" "$ENVIRONMENT" "latest"
+
+        exit 1
+    fi
+
     # Step 6: Reload nginx (if needed)
     echo ""
     echo "======================================================================"

@@ -306,6 +306,59 @@ validate_env_file() {
 }
 
 # =============================================================================
+# validate_smoke_tests
+# Runs functional smoke tests on deployed containers BEFORE traffic switch
+# =============================================================================
+validate_smoke_tests() {
+    local project_name="$1"
+    local environment="$2"
+    local compose_project="${project_name}-${environment}"
+
+    echo "🧪 Running smoke tests on new containers..."
+
+    # Test backend health endpoint (if backend exists)
+    if docker-compose -p "$compose_project" ps --services 2>/dev/null | grep -q "backend"; then
+        local backend_container=$(docker-compose -p "$compose_project" ps -q backend 2>/dev/null | head -1)
+
+        if [ -n "$backend_container" ]; then
+            echo "🔍 Testing backend health endpoint..."
+
+            # Try common health endpoints
+            if docker exec "$backend_container" curl -f -s http://localhost:3000/health >/dev/null 2>&1; then
+                echo -e "${GREEN}✅ Backend health endpoint responding${NC}"
+            elif docker exec "$backend_container" curl -f -s http://localhost:3000/ >/dev/null 2>&1; then
+                echo -e "${GREEN}✅ Backend root endpoint responding${NC}"
+            else
+                echo -e "${RED}❌ Backend smoke test failed - endpoints not responding${NC}"
+                return 1
+            fi
+        fi
+    fi
+
+    # Test frontend health endpoint (if frontend exists)
+    if docker-compose -p "$compose_project" ps --services 2>/dev/null | grep -q "frontend"; then
+        local frontend_container=$(docker-compose -p "$compose_project" ps -q frontend 2>/dev/null | head -1)
+
+        if [ -n "$frontend_container" ]; then
+            echo "🔍 Testing frontend health endpoint..."
+
+            # Try common health endpoints
+            if docker exec "$frontend_container" curl -f -s http://localhost/health >/dev/null 2>&1; then
+                echo -e "${GREEN}✅ Frontend health endpoint responding${NC}"
+            elif docker exec "$frontend_container" curl -f -s http://localhost/ >/dev/null 2>&1; then
+                echo -e "${GREEN}✅ Frontend root endpoint responding${NC}"
+            else
+                echo -e "${RED}❌ Frontend smoke test failed - endpoints not responding${NC}"
+                return 1
+            fi
+        fi
+    fi
+
+    echo -e "${GREEN}✅ All smoke tests passed${NC}"
+    return 0
+}
+
+# =============================================================================
 # validate_all
 # Runs all validation checks
 # =============================================================================
