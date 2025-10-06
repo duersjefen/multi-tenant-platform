@@ -146,16 +146,16 @@ deploy: ## Deploy project (usage: make deploy project=filter-ical env=staging)
 	@test -n "$(project)" || (echo "$(RED)❌ Missing project=<name>$(NC)"; echo "Usage: make deploy project=filter-ical env=staging"; exit 1)
 	@test -n "$(env)" || (echo "$(RED)❌ Missing env=<staging|production>$(NC)"; exit 1)
 	@echo "$(YELLOW)🚀 Deploying $(project) to $(env)...$(NC)"
-	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) << 'EOF'
+	@ssh -i $(SSH_KEY) $(SSH_USER)@$(SSH_HOST) bash -s $(project) $(env) << 'EOF'
 		set -e
-		cd $(REMOTE_PATH)
-		echo "$(YELLOW)📥 Pulling latest platform configs...$(NC)"
+		PROJECT="$$1"
+		ENVIRONMENT="$$2"
+		cd /opt/multi-tenant-platform
+		echo "📥 Pulling latest platform configs..."
 		git pull origin main
-		echo "$(YELLOW)🐳 Authenticating to GHCR...$(NC)"
-		echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u duersjefen --password-stdin || true
-		echo "$(YELLOW)🚀 Running deployment...$(NC)"
-		PLATFORM_ROOT=$(REMOTE_PATH) ENVIRONMENT=$(env) ./lib/deploy.sh $(project) $(env)
-		echo "$(GREEN)✅ Deployment complete$(NC)"
+		echo "🚀 Running deployment..."
+		PLATFORM_ROOT=/opt/multi-tenant-platform ENVIRONMENT=$$ENVIRONMENT ./lib/deploy.sh $$PROJECT $$ENVIRONMENT
+		echo "✅ Deployment complete"
 	EOF
 
 .PHONY: redeploy
