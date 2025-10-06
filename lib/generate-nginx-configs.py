@@ -68,7 +68,10 @@ class NginxConfigGenerator:
 
         for container_key, container_config in containers.items():
             container_name = container_config["name"]
-            if environment == "staging":
+            # Apply environment suffix to container name
+            if environment == "production":
+                container_name = f"{container_name}-production"
+            elif environment == "staging":
                 container_name = f"{container_name}-staging"
 
             if "backend" in container_key.lower():
@@ -118,7 +121,8 @@ server {{
 
         # Add backend routes if backend exists
         if backend_container and api_locations:
-            api_pattern = "|".join(api_locations)
+            # Strip leading slashes from locations to create correct regex pattern
+            api_pattern = "|".join(loc.lstrip('/') for loc in api_locations)
             burst = rate_limit.get("burst", 20)
 
             config += f"""
