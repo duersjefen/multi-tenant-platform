@@ -124,6 +124,20 @@ projects:
       pre_deployment: true
       retention: 3  # Keep last 3 backups
 
+    # Database configuration
+    database:
+      type: postgresql
+      container: postgres-platform
+      databases:
+        production: filterical_production
+        staging: filterical_staging
+      user: filterical_user
+      # Backup configuration
+      backup:
+        enabled: true
+        retention_days: 30  # Keep daily backups for 30 days
+        verify_on_restore: true
+
 
   # =============================================================================
   # PROJECT: paiss

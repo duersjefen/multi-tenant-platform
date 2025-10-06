@@ -119,20 +119,34 @@ deploy() {
 
     # Step 2: Create backup
     local backup_name="none"
+    local database_backup_file="none"
     if [ "$SKIP_BACKUP" = false ]; then
         echo ""
         echo "======================================================================"
         echo "📋 STEP 2: CREATE BACKUP"
         echo "======================================================================"
 
-        if backup_name=$(create_backup "$PROJECT_NAME" "$ENVIRONMENT"); then
-            echo "📝 Backup created: $backup_name"
+        # Step 2.1: Backup database first (most critical)
+        if database_backup_file=$(backup_database "$PROJECT_NAME" "$ENVIRONMENT"); then
+            echo "📝 Database backup created"
         else
             if [ "$FORCE_DEPLOY" = false ]; then
-                notify_deployment_failure "$PROJECT_NAME" "$ENVIRONMENT" "Backup creation failed"
+                notify_deployment_failure "$PROJECT_NAME" "$ENVIRONMENT" "Database backup failed"
                 exit 1
             fi
-            echo -e "${YELLOW}⚠️  Backup failed but continuing due to --force${NC}"
+            echo -e "${YELLOW}⚠️  Database backup failed but continuing due to --force${NC}"
+            database_backup_file="none"
+        fi
+
+        # Step 2.2: Backup containers and volumes
+        if backup_name=$(create_backup "$PROJECT_NAME" "$ENVIRONMENT"); then
+            echo "📝 Container backup created: $backup_name"
+        else
+            if [ "$FORCE_DEPLOY" = false ]; then
+                notify_deployment_failure "$PROJECT_NAME" "$ENVIRONMENT" "Container backup failed"
+                exit 1
+            fi
+            echo -e "${YELLOW}⚠️  Container backup failed but continuing due to --force${NC}"
             backup_name="none"
         fi
     else
@@ -341,6 +355,7 @@ deploy() {
 
     # Cleanup old backups
     cleanup_old_backups "$PROJECT_NAME" "$ENVIRONMENT" 30
+    cleanup_old_database_backups "$PROJECT_NAME" "$ENVIRONMENT" 30
 
     return 0
 }

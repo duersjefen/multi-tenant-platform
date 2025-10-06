@@ -242,3 +242,203 @@ get_latest_backup() {
     basename "$latest" .meta
     return 0
 }
+
+# =============================================================================
+# backup_database
+# Creates a PostgreSQL database backup using pg_dump
+# =============================================================================
+backup_database() {
+    local project_name="$1"
+    local environment="$2"
+    local platform_root="${PLATFORM_ROOT:-/opt/multi-tenant-platform}"
+
+    echo "🗄️  Backing up database..."
+
+    # Read database config from projects.yml
+    local db_config=$(python3 <<PYTHON
+import yaml
+import sys
+
+try:
+    with open('${platform_root}/config/projects.yml', 'r') as f:
+        config = yaml.safe_load(f)
+
+    project = config['projects'].get('${project_name}', {})
+    db_config = project.get('database', {})
+
+    if not db_config or db_config.get('type') != 'postgresql':
+        print("NO_DATABASE")
+        sys.exit(0)
+
+    db_name = db_config.get('databases', {}).get('${environment}')
+    db_container = db_config.get('container', 'postgres-platform')
+    db_user = db_config.get('user', 'admin')
+
+    if not db_name:
+        print("NO_DATABASE")
+        sys.exit(0)
+
+    print(f"{db_name}|{db_container}|{db_user}")
+except Exception as e:
+    print(f"ERROR: {e}", file=sys.stderr)
+    sys.exit(1)
+PYTHON
+)
+
+    if [ "$db_config" = "NO_DATABASE" ]; then
+        echo "  ℹ️  No database configured for this project/environment"
+        return 0
+    fi
+
+    if [[ "$db_config" == ERROR:* ]]; then
+        echo -e "${RED}❌ Failed to read database config: ${db_config#ERROR: }${NC}"
+        return 1
+    fi
+
+    # Parse database config
+    IFS='|' read -r DB_NAME DB_CONTAINER DB_USER <<< "$db_config"
+
+    # Create backup directory
+    local backup_dir="/opt/backups/${project_name}/${environment}/database"
+    mkdir -p "$backup_dir"
+
+    # Generate backup filename with timestamp
+    local timestamp=$(date +%Y%m%d_%H%M%S)
+    local backup_file="${backup_dir}/db_${timestamp}.sql.gz"
+
+    echo "  Database: $DB_NAME"
+    echo "  Container: $DB_CONTAINER"
+
+    # Check if container exists
+    if ! docker ps --format "{{.Names}}" | grep -q "^${DB_CONTAINER}$"; then
+        echo -e "${RED}❌ Database container not found: $DB_CONTAINER${NC}"
+        return 1
+    fi
+
+    # Perform database backup using pg_dump
+    if docker exec "$DB_CONTAINER" \
+        pg_dump -U "$DB_USER" "$DB_NAME" \
+        --format=custom \
+        --compress=9 \
+        --verbose 2>&1 | gzip > "$backup_file"; then
+
+        echo -e "${GREEN}✅ Database backup created: $(basename "$backup_file")${NC}"
+
+        # Verify backup is not empty
+        local file_size=$(stat -f%z "$backup_file" 2>/dev/null || stat -c%s "$backup_file" 2>/dev/null)
+        if [ "$file_size" -lt 100 ]; then
+            echo -e "${RED}❌ Backup file is too small (${file_size} bytes) - likely failed${NC}"
+            rm -f "$backup_file"
+            return 1
+        fi
+
+        echo "  Size: $(du -h "$backup_file" | cut -f1)"
+        echo "$backup_file"
+        return 0
+    else
+        echo -e "${RED}❌ Database backup failed${NC}"
+        rm -f "$backup_file"
+        return 1
+    fi
+}
+
+# =============================================================================
+# restore_database
+# Restores a PostgreSQL database from pg_dump backup
+# =============================================================================
+restore_database() {
+    local project_name="$1"
+    local environment="$2"
+    local backup_file="$3"
+    local platform_root="${PLATFORM_ROOT:-/opt/multi-tenant-platform}"
+
+    echo -e "${YELLOW}⚠️  RESTORING DATABASE FROM BACKUP${NC}"
+    echo "  Backup: $(basename "$backup_file")"
+
+    # Verify backup file exists
+    if [ ! -f "$backup_file" ]; then
+        echo -e "${RED}❌ Backup file not found: $backup_file${NC}"
+        return 1
+    fi
+
+    # Read database config from projects.yml
+    local db_config=$(python3 <<PYTHON
+import yaml
+
+try:
+    with open('${platform_root}/config/projects.yml', 'r') as f:
+        config = yaml.safe_load(f)
+
+    project = config['projects'].get('${project_name}', {})
+    db_config = project.get('database', {})
+
+    if not db_config or db_config.get('type') != 'postgresql':
+        print("NO_DATABASE")
+        exit(0)
+
+    db_name = db_config.get('databases', {}).get('${environment}')
+    db_container = db_config.get('container', 'postgres-platform')
+    db_user = db_config.get('user', 'admin')
+
+    print(f"{db_name}|{db_container}|{db_user}")
+except Exception as e:
+    print(f"ERROR: {e}")
+    exit(1)
+PYTHON
+)
+
+    if [ "$db_config" = "NO_DATABASE" ]; then
+        echo "  ℹ️  No database configured for this project/environment"
+        return 0
+    fi
+
+    # Parse database config
+    IFS='|' read -r DB_NAME DB_CONTAINER DB_USER <<< "$db_config"
+
+    echo "  Database: $DB_NAME"
+    echo "  Container: $DB_CONTAINER"
+
+    # Drop and recreate database
+    echo "🗑️  Dropping existing database..."
+    docker exec "$DB_CONTAINER" psql -U "$DB_USER" -c "DROP DATABASE IF EXISTS ${DB_NAME};" postgres
+    docker exec "$DB_CONTAINER" psql -U "$DB_USER" -c "CREATE DATABASE ${DB_NAME};" postgres
+
+    # Restore database from backup
+    echo "📥 Restoring database from backup..."
+    if zcat "$backup_file" | docker exec -i "$DB_CONTAINER" \
+        pg_restore -U "$DB_USER" -d "$DB_NAME" \
+        --verbose 2>&1; then
+
+        echo -e "${GREEN}✅ Database restored successfully${NC}"
+        return 0
+    else
+        echo -e "${RED}❌ Database restore failed${NC}"
+        return 1
+    fi
+}
+
+# =============================================================================
+# cleanup_old_database_backups
+# Removes database backups older than retention period
+# =============================================================================
+cleanup_old_database_backups() {
+    local project_name="$1"
+    local environment="$2"
+    local retention_days="${3:-30}"
+    local backup_dir="/opt/backups/${project_name}/${environment}/database"
+
+    echo "🗑️  Cleaning up database backups older than $retention_days days..."
+
+    if [ ! -d "$backup_dir" ]; then
+        return 0
+    fi
+
+    # Find and remove old database backups
+    find "$backup_dir" -name "db_*.sql.gz" -mtime +${retention_days} -print0 | while IFS= read -r -d '' backup_file; do
+        echo "  Removing old backup: $(basename "$backup_file")"
+        rm -f "$backup_file"
+    done
+
+    echo -e "${GREEN}✅ Database backup cleanup complete${NC}"
+    return 0
+}
