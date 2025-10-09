@@ -1,7 +1,11 @@
+version: '3.8'
+
 # =============================================================================
-# Gabs Massage - Physiotherapy Scheduler
+# Gabs Massage Deployment Configuration
 # =============================================================================
-# Deployment configuration for production and staging environments
+# This file defines how gabs-massage containers are deployed
+# App code lives in: https://github.com/duersjefen/gabs-massage
+# Images are pulled from GitHub Container Registry
 # =============================================================================
 
 networks:
@@ -11,26 +15,22 @@ networks:
 
 services:
   # ===========================================================================
-  # PRODUCTION: gabs-massage-web
+  # BACKEND - FastAPI + Python
   # ===========================================================================
-  gabs-massage-web:
-    image: ghcr.io/duersjefen/physiotherapy-scheduler:latest
-    container_name: gabs-massage-web
+  backend:
+    container_name: gabs-massage-backend${ENVIRONMENT:+-}${ENVIRONMENT}
+    image: ghcr.io/duersjefen/gabs-massage-backend:${VERSION:-latest}
     restart: unless-stopped
     networks:
-      - platform
-    volumes:
-      # Persistent database storage
-      - gabs-massage-data:/app/data
-    environment:
-      - PORT=3000
-      - DATABASE_FILE=/app/data/physiotherapy.db
-      - AUTH_SECRET=${GABS_MASSAGE_AUTH_SECRET:-change-me-in-production}
-      - SESSION_TIMEOUT=60
+      platform:
+        aliases:
+          - backend  # Allow DNS resolution by service name
+    env_file:
+      - .env.${ENVIRONMENT:-production}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
       start_period: 40s
     logging:
@@ -40,42 +40,26 @@ services:
         max-file: "3"
 
   # ===========================================================================
-  # STAGING: gabs-massage-web-staging
+  # FRONTEND - Vue 3 SPA
   # ===========================================================================
-  gabs-massage-web-staging:
-    image: ghcr.io/duersjefen/physiotherapy-scheduler:latest
-    container_name: gabs-massage-web-staging
+  frontend:
+    container_name: gabs-massage-frontend${ENVIRONMENT:+-}${ENVIRONMENT}
+    image: ghcr.io/duersjefen/gabs-massage-frontend:${VERSION:-latest}
     restart: unless-stopped
     networks:
-      - platform
-    volumes:
-      # Separate staging database
-      - gabs-massage-staging-data:/app/data
-    environment:
-      - PORT=3000
-      - DATABASE_FILE=/app/data/physiotherapy-staging.db
-      - AUTH_SECRET=${GABS_MASSAGE_STAGING_AUTH_SECRET:-staging-secret-key}
-      - SESSION_TIMEOUT=60
+      platform:
+        aliases:
+          - frontend  # Allow DNS resolution by service name
+    env_file:
+      - .env.${ENVIRONMENT:-production}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD-SHELL", "curl -f http://localhost/health || exit 1"]
+      interval: 10s
+      timeout: 5s
       retries: 3
-      start_period: 40s
+      start_period: 30s  # Give nginx time to start
     logging:
       driver: "json-file"
       options:
-        max-size: "5m"
-        max-file: "2"
-
-# =============================================================================
-# VOLUMES - Persistent Storage for SQLite Databases
-# =============================================================================
-volumes:
-  gabs-massage-data:
-    name: gabs-massage-data
-    driver: local
-
-  gabs-massage-staging-data:
-    name: gabs-massage-staging-data
-    driver: local
+        max-size: "10m"
+        max-file: "3"
