@@ -175,14 +175,40 @@ deploy() {
     echo "📋 STEP 4: DEPLOY NEW VERSION"
     echo "======================================================================"
 
-    # Stop and remove existing containers if they exist
-    # Docker keeps stopped containers with their names, blocking new deployments
+    # ROBUST CONTAINER CLEANUP
+    # Problem: docker-compose down fails silently with zombie containers
+    # Solution: Force-remove all containers matching project pattern
     echo "🔍 Checking for existing containers..."
+
+    # Method 1: Try graceful docker-compose down first
     EXISTING_CONTAINERS=$(docker-compose -p "$COMPOSE_PROJECT" ps -q 2>/dev/null || true)
     if [ -n "$EXISTING_CONTAINERS" ]; then
-        echo -e "${YELLOW}⚠️  Stopping and removing existing containers...${NC}"
-        docker-compose -p "$COMPOSE_PROJECT" down --volumes
-        echo -e "${GREEN}✅ Old containers removed${NC}"
+        echo -e "${YELLOW}⚠️  Attempting graceful shutdown...${NC}"
+        docker-compose -p "$COMPOSE_PROJECT" down --volumes 2>/dev/null || true
+    fi
+
+    # Method 2: Force-remove any containers matching our naming pattern
+    # Pattern: {project}-{service}-{environment} (e.g., filter-ical-backend-staging)
+    CONTAINER_PATTERN="${PROJECT_NAME}.*${ENVIRONMENT}"
+    ORPHAN_CONTAINERS=$(docker ps -a --filter "name=${CONTAINER_PATTERN}" --format "{{.ID}} {{.Names}}" 2>/dev/null || true)
+
+    if [ -n "$ORPHAN_CONTAINERS" ]; then
+        echo -e "${YELLOW}⚠️  Found orphan containers matching '${CONTAINER_PATTERN}':${NC}"
+        echo "$ORPHAN_CONTAINERS" | while read container_id container_name; do
+            echo "   - Removing: $container_name ($container_id)"
+            docker rm -f "$container_id" 2>/dev/null || true
+        done
+        echo -e "${GREEN}✅ Orphan containers force-removed${NC}"
+    else
+        echo -e "${GREEN}✅ No orphan containers found${NC}"
+    fi
+
+    # Verify no naming conflicts remain
+    REMAINING=$(docker ps -a --filter "name=${CONTAINER_PATTERN}" --format "{{.Names}}" 2>/dev/null || true)
+    if [ -n "$REMAINING" ]; then
+        echo -e "${RED}❌ ERROR: Failed to remove containers: $REMAINING${NC}"
+        echo -e "${RED}Manual cleanup required. Run: docker rm -f $REMAINING${NC}"
+        exit 1
     fi
 
     # Deploy new containers
