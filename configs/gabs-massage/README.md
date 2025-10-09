@@ -4,9 +4,9 @@ Professional massage therapy booking platform with Vue 3 frontend and Python Fas
 
 ## Architecture
 
-- **Backend Image:** ghcr.io/duersjefen/gabs-massage-backend:latest
+- **Backend Image:** ghcr.io/duersjefen/gabs-massage-backend:latest (Python 3.13)
 - **Frontend Image:** ghcr.io/duersjefen/gabs-massage-frontend:latest
-- **Backend Port:** 3000 (internal)
+- **Backend Port:** 3001 (internal)
 - **Frontend Port:** 80 (internal)
 - **Database:** PostgreSQL (shared platform instance at `postgres-platform:5432`)
 - **API Docs:** Available at `/docs` and `/redoc`

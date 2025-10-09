@@ -15,7 +15,7 @@ networks:
 
 services:
   # ===========================================================================
-  # BACKEND - FastAPI + Python
+  # BACKEND - FastAPI + Python 3.13
   # ===========================================================================
   backend:
     container_name: gabs-massage-backend${ENVIRONMENT:+-}${ENVIRONMENT}
@@ -28,7 +28,7 @@ services:
     env_file:
       - .env.${ENVIRONMENT:-production}
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
