@@ -1,222 +1,188 @@
-# Multi-Tenant Deployment Platform
+# Multi-Tenant Platform
 
-> 🎉 **Production-grade infrastructure for deploying multiple applications on a single server**
+**Simplified infrastructure for hosting multiple web applications**
 
-This is a **universal deployment platform** that can host multiple applications with zero-downtime deployments, comprehensive monitoring, and automatic rollback.
+This platform provides shared nginx reverse proxy, PostgreSQL database, and SSL automation (Let's Encrypt) for hosting multiple applications on a single EC2 instance.
 
-## 🏗️ What is This?
+## 🎯 Design Philosophy
 
-A **pure infrastructure repository** that:
+**Simple. Static. Reliable.**
 
-- ✅ **Deploys any application** from any repository
-- ✅ **Shared infrastructure** (one nginx, one monitoring stack for all apps)
-- ✅ **Universal deployment scripts** (`./lib/deploy.sh <project> <environment>`)
-- ✅ **Blue-green deployments** with automatic rollback
-- ✅ **Comprehensive monitoring** (Prometheus + Grafana + Alertmanager)
-- ✅ **Copy-paste ready** for new projects
+- ✅ **No GitHub Actions complexity** - Deploy via SSH/SSM from your local machine
+- ✅ **Static nginx configs** - No auto-generation scripts, just simple .conf files
+- ✅ **App-based deployment** - Each app manages its own deployment
+- ✅ **Minimal dependencies** - Just Docker, nginx, postgres, certbot
 
-**This repo does NOT contain application code** - only deployment infrastructure and configs.
-
-## 📁 Structure
+## 🏗️ Architecture
 
 ```
-/
-├── platform/              # Shared infrastructure (nginx, monitoring)
-│   ├── docker-compose.platform.yml
-│   ├── nginx/
-│   ├── monitoring/
-│   └── scripts/
-│
-├── lib/                   # Universal deployment scripts
-│   ├── deploy.sh         # Main deployment orchestration
-│   ├── rollback.sh       # Rollback to backup
-│   ├── health-check.sh   # Health validation
-│   └── functions/        # Reusable bash functions
-│
-├── configs/              # Per-app deployment configurations
-│   └── filter-ical/      # Example: filter-ical app config
-│       ├── docker-compose.yml    # References app images
-│       ├── .env.production       # Production settings
-│       ├── .env.staging         # Staging settings
-│       └── nginx.conf           # App-specific routing
-│
-├── config/
-│   └── projects.yml      # ⭐ Project registry (all apps)
-│
-└── docs/                 # Platform documentation
-    ├── README.md
-    ├── ARCHITECTURE.md
-    ├── ADDING_A_PROJECT.md
-    ├── DEPLOYMENT_GUIDE.md
-    └── TROUBLESHOOTING.md
+┌─────────────────────────────────────────────────────────┐
+│ EC2 Instance (Amazon Linux 2023 / t3.medium)           │
+│                                                         │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │ Platform (this repo)                             │  │
+│  │  - nginx (reverse proxy)                         │  │
+│  │  - postgres (shared database)                    │  │
+│  │  - certbot (SSL automation)                      │  │
+│  └──────────────────────────────────────────────────┘  │
+│                                                         │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │ Apps (deployed separately via SSM)               │  │
+│  │  - paiss-web                                     │  │
+│  │  - filter-ical-backend + frontend                │  │
+│  │  - gabs-massage-web                              │  │
+│  └──────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
 ```
+
+## 📦 What's Included
+
+- **Nginx** - Reverse proxy with SSL, HTTP/2, HTTP/3, rate limiting, security headers
+- **PostgreSQL** - Shared database for all apps (separate databases per app)
+- **Certbot** - Automatic SSL certificate generation and renewal
+- **Docker networking** - All apps join the `platform` network
+- **Static nginx configs** - Per-app configurations in `platform/nginx/sites/`
+- **Backup automation** - Daily database backups (7-day retention)
 
 ## 🚀 Quick Start
 
-### Deploy an Application
+### 1. Provision EC2 Instance
+
+See [docs/EC2_SPECS.md](docs/EC2_SPECS.md) for detailed specifications.
+
+**TL;DR:**
+- AMI: Amazon Linux 2023
+- Type: t3.medium
+- Storage: 30 GB gp3
+- Region: eu-north-1
+- IAM Role: SSM + ECR access
+
+### 2. Setup Server
 
 ```bash
-# Deploy to production
-./lib/deploy.sh filter-ical production
+# Connect via SSM
+aws ssm start-session --target i-YOUR-INSTANCE-ID --region eu-north-1
 
-# Check health
-./lib/health-check.sh filter-ical production
-
-# Rollback if needed
-./lib/rollback.sh filter-ical production
+# Run setup script (as root)
+sudo bash /opt/platform/scripts/setup-server.sh
 ```
 
-### Add New Application
+See [docs/SETUP.md](docs/SETUP.md) for detailed setup instructions.
+
+### 3. Deploy Platform
 
 ```bash
-# 1. Add to project registry
-vim config/projects.yml
-
-# 2. Create deployment config
-mkdir -p configs/my-app
-cp -r configs/filter-ical/* configs/my-app/
-# Edit configs/my-app/* for your app
-
-# 3. Deploy
-./lib/deploy.sh my-app production
+# From your local machine
+./scripts/deploy-platform.sh i-YOUR-INSTANCE-ID
 ```
+
+### 4. Deploy Apps
+
+Each app manages its own deployment via SSM. See app repos for deployment instructions:
+- paiss: `make deploy-staging` / `make deploy-prod`
+- filter-ical: `make deploy-staging` / `make deploy-prod`
+- gabs-massage: `make deploy-staging` / `make deploy-prod`
+
+## 📁 Repository Structure
+
+```
+multi-tenant-platform/
+├── README.md                    # This file
+├── docs/
+│   ├── SETUP.md                # Initial server setup guide
+│   ├── ADDING_APP.md           # How to add new apps
+│   └── EC2_SPECS.md            # EC2 configuration details
+├── platform/
+│   ├── docker-compose.yml      # Platform services
+│   ├── .env.example            # Environment template
+│   └── nginx/
+│       ├── nginx.conf          # Main nginx config
+│       ├── includes/           # Reusable nginx configs
+│       └── sites/              # Per-app configs
+│           ├── paiss.conf
+│           ├── filter-ical.conf
+│           └── gabs-massage.conf
+├── database/
+│   ├── init.sql                # Database initialization
+│   └── backup.sh               # Backup script
+└── scripts/
+    ├── setup-server.sh         # Server setup script
+    └── deploy-platform.sh      # Platform deployment via SSM
+```
+
+## 🔧 Common Tasks
+
+### View Platform Logs
+
+```bash
+# Connect via SSM
+aws ssm start-session --target i-YOUR-INSTANCE-ID --region eu-north-1
+
+# View logs
+cd /opt/platform/platform
+docker-compose logs -f
+```
+
+### Restart Platform Services
+
+```bash
+cd /opt/platform/platform
+docker-compose restart nginx
+```
+
+### Manual Database Backup
+
+```bash
+/opt/platform/database/backup.sh
+```
+
+### Generate SSL Certificates (First Time)
+
+```bash
+# For each domain
+docker run --rm -v certbot-etc:/etc/letsencrypt -v certbot-var:/var/www/certbot \
+    certbot/certbot certonly --webroot --webroot-path=/var/www/certbot \
+    --email your@email.com --agree-tos --no-eff-email \
+    -d paiss.me -d www.paiss.me
+```
+
+## 📊 Current Apps
+
+| App | Domain | Stack | Container Names |
+|-----|--------|-------|----------------|
+| **paiss** | paiss.me | Static site (nginx) | `paiss-web`, `paiss-web-staging` |
+| **filter-ical** | filter-ical.de | Vue 3 + FastAPI | `filter-ical-frontend-{env}`, `filter-ical-backend-{env}` |
+| **gabs-massage** | gabs-massage.de | Vue 3 + FastAPI | `gabs-massage-web`, `gabs-massage-web-staging` |
+
+## 🛡️ Security
+
+- All HTTP traffic redirected to HTTPS
+- Modern TLS configuration (TLSv1.2+)
+- Security headers (X-Frame-Options, CSP, etc.)
+- Rate limiting on all endpoints
+- Automated SSL certificate renewal
+- No SSH access required (using AWS SSM)
+
+## 💰 Cost
+
+**Estimated monthly cost:** ~$35-40
+- EC2 t3.medium: ~$32/month
+- EBS 30GB gp3: ~$2.40/month
+- Data transfer: minimal
 
 ## 📚 Documentation
 
-- **[docs/README.md](docs/README.md)** - Platform overview and quick start
-- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - How the platform works
-- **[docs/ADDING_A_PROJECT.md](docs/ADDING_A_PROJECT.md)** - Add new applications
-- **[docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** - Deployment procedures
-- **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Common issues
+- [SETUP.md](docs/SETUP.md) - Complete server setup guide
+- [ADDING_APP.md](docs/ADDING_APP.md) - How to add new apps
+- [EC2_SPECS.md](docs/EC2_SPECS.md) - EC2 configuration details
 
-## 🎯 Hosted Applications
+## 🔗 Related Repositories
 
-Current applications on this platform:
-
-### filter-ical (iCal Viewer & Filter)
-- **App Repository**: https://github.com/duersjefen/filter-ical
-- **Production**: https://filter-ical.de
-- **Staging**: https://staging.filter-ical.de
-- **Config**: `configs/filter-ical/`
-
-## 🔧 Key Features
-
-### Universal Deployment
-- One script works for ALL applications
-- No hard-coding - everything configured in `config/projects.yml`
-- Apps can be in ANY repository
-
-### Zero-Downtime Deployments
-- Blue-green deployment strategy
-- Deploy → Validate → Switch traffic → Success!
-- Automatic rollback on failure
-
-### Production Safety
-- Pre-flight validation (disk space, images, configs)
-- Automatic backups before every deployment
-- Health checks with proper warmup periods
-- Auto-rollback if anything fails
-
-### Monitoring
-- **Prometheus** scrapes metrics from all applications
-- **Grafana** visualizes with auto-provisioned dashboards
-- **Alertmanager** sends notifications (email/Slack/PagerDuty)
-- Built-in alerts for downtime, errors, slow responses
-
-### SSL Certificate Management
-- **Automatic provisioning** via Let's Encrypt
-- **Multi-domain certificates** for production domains (e.g., `example.com` + `www.example.com`)
-- **Smart detection** - only requests missing certificates
-- **Placeholder certificates** for local/pre-DNS environments
-- **Zero-downtime renewal** via certbot cron jobs
-
-```bash
-# Provision all missing SSL certificates
-make provision-ssl
-
-# Preview what would be provisioned (dry-run)
-make provision-ssl-dry-run
-
-# Force renewal of all certificates
-ssh server "cd /opt/multi-tenant-platform && ./lib/provision-ssl-certs.sh --force"
-```
-
-**How it works:**
-1. Script reads all domains from `config/projects.yml`
-2. Groups production domains together (e.g., `domain.com,www.domain.com`)
-3. Checks which certificates exist (skips existing valid certs)
-4. Requests multi-domain Let's Encrypt certificates via HTTP-01 challenge
-5. Falls back to self-signed placeholders if DNS not configured yet
-
-**Certificate storage:**
-- Production domains: `/etc/letsencrypt/live/primary-domain/` (covers all SANs)
-- Staging domains: Separate certificates per environment
-- Nginx automatically uses primary domain path for all aliases
-
-## 🌟 Architecture Principles
-
-This platform follows industry best practices:
-
-1. **Separation of Concerns**: Infrastructure repo vs application repos
-2. **Infrastructure as Code**: Everything configured, nothing manual
-3. **Immutable Deployments**: Deploy new, validate, switch traffic
-4. **Observable Systems**: Monitoring built-in from day one
-5. **Fail-Safe Defaults**: Auto-rollback, health checks, validations
-
-## 🔄 Workflow
-
-### For Application Developers
-
-1. **Develop** in your app repository (e.g., `ical-viewer`)
-2. **Build** Docker images and push to registry
-3. **Deploy** using platform scripts: `./lib/deploy.sh my-app production`
-
-### For Platform Maintainers
-
-1. **Configure** new apps in `configs/`
-2. **Register** apps in `config/projects.yml`
-3. **Monitor** all apps through shared Grafana dashboards
-
-## 📊 Stats
-
-- **Platform files**: 28 infrastructure and script files
-- **Documentation**: 95+ pages of comprehensive guides
-- **Deployment time**: ~2 minutes (with health checks)
-- **Rollback time**: ~30 seconds
-- **Zero downtime**: Yes (blue-green deployments)
-
-## 🎓 Example: Deploying filter-ical
-
-```bash
-# The platform pulls images from the app repo's registry
-
-# Deploy latest version
-./lib/deploy.sh filter-ical production
-
-# Deploy specific version
-echo "VERSION=v1.2.3" > configs/filter-ical/.env.production
-./lib/deploy.sh filter-ical production
-
-# The script automatically:
-# 1. Pulls ghcr.io/duersjefen/filter-ical-backend:v1.2.3
-# 2. Pulls ghcr.io/duersjefen/filter-ical-frontend:v1.2.3
-# 3. Deploys to inactive environment (blue or green)
-# 4. Validates health checks
-# 5. Switches traffic
-# 6. Success! (or auto-rollback on failure)
-```
-
-## 🌟 Netflix-Ready
-
-This architecture implements patterns used by companies like Netflix:
-
-- ✅ Infrastructure as Code
-- ✅ Blue-Green Deployments
-- ✅ Health Checks with warmup periods
-- ✅ Monitoring & Alerting
-- ✅ Automatic Rollback
-- ✅ Immutable Infrastructure
+- [paiss](https://github.com/duersjefen/paiss) - Company website
+- [filter-ical](https://github.com/duersjefen/filter-ical) - Calendar filtering app
+- [gabs-massage](https://github.com/duersjefen/physiotherapy-scheduler) - Physiotherapy scheduler
 
 ---
 
-**Ready to deploy?** Start with [docs/README.md](docs/README.md)
+**Region:** eu-north-1
+**Last Updated:** 2025-10-10
