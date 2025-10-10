@@ -175,7 +175,7 @@ fi
 echo "🚀 Deploying Your App to $ENVIRONMENT"
 echo "========================================"
 
-# Deploy via SSM
+# Deploy via SSM - builds on server
 aws ssm send-command \
     --region "$REGION" \
     --instance-ids "$INSTANCE_ID" \
@@ -183,16 +183,21 @@ aws ssm send-command \
     --comment "Deploy your-app $ENVIRONMENT" \
     --parameters "commands=[
         'set -e',
-        'echo \"📥 Deploying your-app...\"',
-        'cd /opt/apps/your-app',
-        '[ -d .git ] || git clone https://github.com/YOUR_USERNAME/your-app.git .',
+        'echo \"📥 Deploying your-app ($ENVIRONMENT)...\"',
+        'cd /opt/apps/your-app || exit 1',
+        'if [ ! -d .git ]; then',
+        '  cd /opt/apps',
+        '  git clone https://github.com/YOUR_USERNAME/your-app.git',
+        '  cd your-app',
+        'fi',
+        'echo \"📥 Pulling latest code...\"',
         'git pull origin main',
-        'echo \"🐳 Pulling latest images...\"',
-        'docker-compose -f docker-compose.yml pull',
-        'echo \"🔄 Starting containers...\"',
-        'ENVIRONMENT=$ENVIRONMENT docker-compose -f docker-compose.yml up -d',
-        'echo \"⏳ Waiting for health check...\"',
-        'sleep 10',
+        'echo \"🔨 Building Docker image...\"',
+        'CONTAINER_NAME=$CONTAINER_NAME ENVIRONMENT=$ENVIRONMENT docker-compose build',
+        'echo \"🚀 Starting container...\"',
+        'CONTAINER_NAME=$CONTAINER_NAME ENVIRONMENT=$ENVIRONMENT docker-compose up -d',
+        'echo \"⏳ Waiting for container...\"',
+        'sleep 5',
         'docker ps | grep your-app',
         'echo \"✅ Deployment complete!\"'
     ]" \
@@ -213,8 +218,10 @@ networks:
 
 services:
   your-app-web:
-    container_name: your-app-web${ENVIRONMENT:+-}${ENVIRONMENT}
-    image: ghcr.io/YOUR_USERNAME/your-app:${VERSION:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ${CONTAINER_NAME:-your-app-web}
     restart: unless-stopped
     networks:
       - platform
@@ -226,6 +233,8 @@ services:
       timeout: 5s
       retries: 3
 ```
+
+**Note**: Uses `build` instead of `image` - builds from Dockerfile on server
 
 ### Update Makefile
 

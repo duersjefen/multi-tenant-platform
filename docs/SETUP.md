@@ -59,38 +59,11 @@ Create an IAM role for the EC2 instance:
 
 3. **Attach policies**:
    - `AmazonSSMManagedInstanceCore` (for SSM access)
-   - Custom policy for ECR (see below)
+   - That's it! (no registry permissions needed)
 
-4. **Custom ECR Policy** (name it `ECRPullAccess`):
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ecr:GetAuthorizationToken",
-        "ecr:BatchCheckLayerAvailability",
-        "ecr:GetDownloadUrlForLayer",
-        "ecr:BatchGetImage"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ecr-public:GetAuthorizationToken",
-        "sts:GetServiceBearerToken"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-```
+4. **Role name**: `MultiTenantPlatformEC2Role`
 
-5. **Role name**: `MultiTenantPlatformEC2Role`
-
-6. **Attach to EC2**: Go back to EC2 → Actions → Security → Modify IAM role → Select the role
+5. **Attach to EC2**: Go back to EC2 → Actions → Security → Modify IAM role → Select the role
 
 ### Launch Instance
 

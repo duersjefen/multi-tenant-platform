@@ -8,7 +8,8 @@ This platform provides shared nginx reverse proxy, PostgreSQL database, and SSL 
 
 **Simple. Static. Reliable.**
 
-- ✅ **No GitHub Actions complexity** - Deploy via SSH/SSM from your local machine
+- ✅ **No GitHub Actions complexity** - Deploy via SSM from your local machine
+- ✅ **No image registry** - Builds happen on server from git repos
 - ✅ **Static nginx configs** - No auto-generation scripts, just simple .conf files
 - ✅ **App-based deployment** - Each app manages its own deployment
 - ✅ **Minimal dependencies** - Just Docker, nginx, postgres, certbot

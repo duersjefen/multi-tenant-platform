@@ -67,32 +67,7 @@ Detailed specifications for the multi-tenant platform EC2 instance.
    - Required for AWS Systems Manager (SSM) access
    - Allows remote command execution without SSH
 
-2. **ECRPullAccess** (Custom Policy)
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ecr:GetAuthorizationToken",
-        "ecr:BatchCheckLayerAvailability",
-        "ecr:GetDownloadUrlForLayer",
-        "ecr:BatchGetImage"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ecr-public:GetAuthorizationToken",
-        "sts:GetServiceBearerToken"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-```
+**Note**: No ECR/registry permissions needed - apps build directly on server from git repos
 
 ## User Data (Optional)
 
