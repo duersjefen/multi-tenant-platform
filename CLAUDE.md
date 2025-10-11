@@ -4,6 +4,15 @@ Shared infrastructure for hosting multiple applications on a single EC2 instance
 
 ---
 
+## 🔗 GLOBAL DEVELOPMENT PRINCIPLES
+
+**For universal development principles (TDD, architecture, critical behaviors):**
+→ **See:** `/Users/martijn/Documents/Projects/CLAUDE.md`
+
+This file contains ONLY platform-specific infrastructure patterns.
+
+---
+
 ## 🎯 WHAT IS THIS
 
 **Platform provides:**
@@ -16,7 +25,98 @@ Shared infrastructure for hosting multiple applications on a single EC2 instance
 - filter-ical (filter-ical.de)
 - gabs-massage (gabs-massage.de)
 
-**Key principle:** Platform = infrastructure, Apps = business logic
+**Key principles:**
+- Platform = infrastructure, Apps = business logic
+- **Contract-First Development:** OpenAPI specs define APIs before implementation
+
+---
+
+## 📋 CONTRACT-FIRST DEVELOPMENT
+
+**All apps on this platform MUST follow contract-first development:**
+
+### The Iron Law
+
+```
+OpenAPI Contract (openapi.yaml) → Implementation → Tests
+```
+
+**✅ CORRECT workflow:**
+1. **Design API in openapi.yaml** - Define exact endpoints, parameters, responses
+2. **Write contract tests** - Validate implementation matches spec exactly
+3. **Implement backend** - Code to satisfy the contract
+4. **Frontend consumes contract** - Never depends on implementation details
+
+**❌ WRONG workflow:**
+```
+Code first → Generate OpenAPI → Hope frontend works
+```
+
+### Why This Matters
+
+**Problem without contracts:**
+- Backend refactoring breaks frontend
+- APIs drift from documentation
+- Frontend tightly coupled to implementation
+- Breaking changes go unnoticed
+
+**Benefits of contract-first:**
+- **100% API stability** - Contract = immutable interface
+- **Fearless refactoring** - Rewrite backend, frontend keeps working
+- **True decoupling** - Frontend/backend can work in parallel
+- **Living documentation** - OpenAPI spec is always correct
+- **Type safety** - Frontend auto-generates types from contract
+
+### Implementation Example
+
+**filter-ical demonstrates this perfectly:**
+
+```yaml
+# backend/openapi.yaml - THE CONTRACT
+paths:
+  /api/domains/{domain}/groups:
+    get:
+      summary: Get groups for domain
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Group'
+```
+
+```python
+# backend/app/routers/domains.py - IMPLEMENTATION MATCHES CONTRACT
+@router.get("/{domain}/groups")
+async def get_domain_groups_endpoint(domain: str, db: Session = Depends(get_db)):
+    """Implementation MUST match OpenAPI contract exactly."""
+    groups = get_domain_groups(db, domain)
+    # Transform to exact OpenAPI schema format
+    return [{
+        "id": group.id,
+        "name": group.name,
+        "domain_key": group.domain_key
+    } for group in groups]
+```
+
+```javascript
+// frontend - CONSUMES CONTRACT (not implementation)
+const groups = await fetch(`/api/domains/${domain}/groups`)
+// Works forever, even if backend is completely rewritten
+```
+
+### Contract-First Checklist
+
+Before implementing ANY new API endpoint:
+
+- [ ] **1. OpenAPI spec written** - Endpoint fully defined in openapi.yaml
+- [ ] **2. Contract test created** - Test validates response matches schema
+- [ ] **3. Implementation matches** - Backend returns exactly what contract promises
+- [ ] **4. Frontend uses contract** - No coupling to implementation details
+
+**If OpenAPI spec doesn't exist for an endpoint, STOP and write it first!**
 
 ---
 
