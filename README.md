@@ -29,7 +29,7 @@ This platform provides shared nginx reverse proxy, PostgreSQL database, and SSL 
 │                                                         │
 │  ┌──────────────────────────────────────────────────┐  │
 │  │ Apps (deployed separately via SSM)               │  │
-│  │  - paiss-web                                     │  │
+│  │  - paiss-production, paiss-staging               │  │
 │  │  - filter-ical-backend + frontend                │  │
 │  │  - gabs-massage-web                              │  │
 │  └──────────────────────────────────────────────────┘  │
@@ -151,7 +151,7 @@ docker run --rm -v certbot-etc:/etc/letsencrypt -v certbot-var:/var/www/certbot 
 
 | App | Domain | Stack | Container Names |
 |-----|--------|-------|----------------|
-| **paiss** | paiss.me | Static site (nginx) | `paiss-web`, `paiss-web-staging` |
+| **paiss** | paiss.me | Static site (nginx) | `paiss-production`, `paiss-staging` |
 | **filter-ical** | filter-ical.de | Vue 3 + FastAPI | `filter-ical-frontend-{env}`, `filter-ical-backend-{env}` |
 | **gabs-massage** | gabs-massage.de | Vue 3 + FastAPI | `gabs-massage-web`, `gabs-massage-web-staging` |
 

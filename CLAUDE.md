@@ -191,13 +191,13 @@ cd /opt/platform && git pull && cd platform && docker-compose restart nginx
 
 ### 3. Container Naming Convention
 
-**Staging:** `{app}-{component}-staging`
-- paiss-web-staging
+**Staging:** `{app}-{component}-staging` (single-service apps omit component)
+- paiss-staging
 - filter-ical-backend-staging, filter-ical-frontend-staging
 - gabs-massage-backend-staging
 
-**Production:** `{app}-{component}-production`
-- paiss-web-production
+**Production:** `{app}-{component}-production` (single-service apps omit component)
+- paiss-production
 - filter-ical-backend-production, filter-ical-frontend-production
 - gabs-massage-backend-production
 
