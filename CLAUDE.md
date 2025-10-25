@@ -7,7 +7,7 @@ Shared infrastructure for hosting multiple applications on a single EC2 instance
 ## 🔗 GLOBAL DEVELOPMENT PRINCIPLES
 
 **For universal development principles (TDD, architecture, critical behaviors):**
-→ **See:** `/Users/martijn/Documents/Projects/CLAUDE.md`
+→ **See:** `~/.claude/CLAUDE.md`
 
 This file contains ONLY platform-specific infrastructure patterns.
 
@@ -205,20 +205,30 @@ cd /opt/platform && git pull && cd platform && docker-compose restart nginx
 
 ### 4. Environment Variables (.env files)
 
-**Platform .env** (`/opt/platform/platform/.env`):
+**Platform .env** (`/opt/platform/platform/.env`) - Infrastructure only:
 ```bash
 POSTGRES_PASSWORD=<generated-secret>
 ```
 
-**App .env files** (`/opt/apps/{app}/.env`):
-```bash
-ENVIRONMENT=staging  # or production
-DATABASE_URL=postgresql://user:pass@postgres-platform:5432/db
-# Other app-specific secrets
+**App .env files** - Per-component pattern (see global CLAUDE.md):
 ```
+/opt/apps/myapp/
+├── backend/.env.staging        # Backend-only vars
+├── backend/.env.production
+├── frontend/.env.staging       # Frontend-only vars (VITE_API_BASE_URL, etc.)
+└── frontend/.env.production
+```
+
+**Multi-component apps (filter-ical, gabs-massage):**
+- Use per-component .env files for security (frontend never gets backend secrets)
+- `docker-compose.yml` uses: `env_file: backend/.env.${ENVIRONMENT}`
+
+**Single-component apps (paiss):**
+- Root `.env.staging` / `.env.production` acceptable
 
 **✅ Edit .env files directly on EC2 (they contain secrets, never commit)**
 **✅ Set once, rarely change**
+**✅ See `~/.claude/CLAUDE.md` for per-component pattern details**
 
 ---
 
